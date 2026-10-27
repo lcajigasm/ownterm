@@ -3,6 +3,7 @@
 //! [`crate::workspaces::user_workspaces::team_workspace_settings`] for the workspace-vs-team
 //! two-layer model and the team-scoped policies that layer on top.
 
+use warp_core::channel::Channel;
 use warp_core::features::FeatureFlag;
 use warpui::{AppContext, SingletonEntity};
 
@@ -167,6 +168,9 @@ impl UserWorkspaces {
     /// For solo users (no workspace), this is controlled by the `SoloUserByok` feature flag.
     /// Anonymous or logged-out users are not allowed to use BYO API keys.
     pub fn is_byo_api_key_enabled(&self, app: &AppContext) -> bool {
+        if ChannelState::channel() == Channel::Oss {
+            return FeatureFlag::SoloUserByok.is_enabled();
+        }
         if AuthStateProvider::as_ref(app)
             .get()
             .is_anonymous_or_logged_out()
@@ -182,6 +186,9 @@ impl UserWorkspaces {
     /// Anonymous or logged-out users are not allowed to use custom inference.
     /// Controlled by the BYO_ENDPOINT billing policy.
     pub fn is_byo_endpoint_enabled(&self, app: &AppContext) -> bool {
+        if ChannelState::channel() == Channel::Oss {
+            return true;
+        }
         if AuthStateProvider::as_ref(app)
             .get()
             .is_anonymous_or_logged_out()

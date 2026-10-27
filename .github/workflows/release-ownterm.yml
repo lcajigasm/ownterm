@@ -1,0 +1,176 @@
+name: Release OwnTerm
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag or version to release (e.g. v0.1.0)'
+        required: true
+        default: 'v0.1.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build (${{ matrix.os }} - ${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+            artifact_name: ownterm-macos-arm64
+            binary_name: ownterm
+          - os: macos-13
+            target: x86_64-apple-darwin
+            artifact_name: ownterm-macos-x86_64
+            binary_name: ownterm
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            artifact_name: ownterm-linux-x86_64
+            binary_name: ownterm
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: ownterm-windows-x86_64
+            binary_name: ownterm.exe
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install protobuf
+          echo "WARP_LOCAL_SKIP_METAL=1" >> "$GITHUB_ENV"
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            protobuf-compiler \
+            pkg-config \
+            libasound2-dev \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            libxcb-xfixes0-dev \
+            libxkbcommon-dev \
+            libssl-dev \
+            libx11-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libxrandr-dev \
+            libgl1-mesa-dev
+
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          choco install protoc -y
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build OwnTerm GUI & TUI
+        shell: bash
+        run: |
+          cargo build --release --target ${{ matrix.target }} -p warp --bin ownterm
+          cargo build --release --target ${{ matrix.target }} -p warp_tui --bin warp-tui
+
+      - name: Package Artifacts (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mkdir -p staging
+          cp "target/${{ matrix.target }}/release/ownterm" staging/ownterm
+          cp "target/${{ matrix.target }}/release/warp-tui" staging/ownterm-tui
+          cp README.md staging/
+          cp LICENSE-AGPL staging/ || true
+          cp LICENSE-MIT staging/ || true
+          if [ -d "app/channels/oss" ]; then
+            cp -r app/channels/oss staging/assets || true
+          fi
+          cd staging
+          tar -czf "../${{ matrix.artifact_name }}.tar.gz" *
+          cd ..
+          shasum -a 256 "${{ matrix.artifact_name }}.tar.gz" > "${{ matrix.artifact_name }}.tar.gz.sha256"
+
+      - name: Package Artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          mkdir -p staging
+          cp "target/${{ matrix.target }}/release/ownterm.exe" staging/ownterm.exe
+          cp "target/${{ matrix.target }}/release/warp-tui.exe" staging/ownterm-tui.exe
+          cp README.md staging/
+          cp LICENSE-AGPL staging/ || true
+          cp LICENSE-MIT staging/ || true
+          cd staging
+          tar -czf "../${{ matrix.artifact_name }}.tar.gz" *
+          cd ..
+          sha256sum "${{ matrix.artifact_name }}.tar.gz" > "${{ matrix.artifact_name }}.tar.gz.sha256"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            ${{ matrix.artifact_name }}.tar.gz
+            ${{ matrix.artifact_name }}.tar.gz.sha256
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: build-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Consolidate Checksums
+        shell: bash
+        run: |
+          mkdir -p dist
+          find release-artifacts -type f -name "*.tar.gz" -exec cp {} dist/ \;
+          find release-artifacts -type f -name "*.sha256" -exec cat {} + > dist/SHA256SUMS
+          cat dist/SHA256SUMS
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.event.inputs.tag_name != ''
+        with:
+          tag_name: ${{ github.ref_name || github.event.inputs.tag_name }}
+          name: OwnTerm Release ${{ github.ref_name || github.event.inputs.tag_name }}
+          draft: true
+          prerelease: false
+          files: |
+            dist/*
+          body: |
+            # OwnTerm Release
+
+            OwnTerm is an open-source, local-first, privacy-focused terminal emulator.
+
+            ### Assets
+            - macOS Apple Silicon (ARM64): `ownterm-macos-arm64.tar.gz`
+            - macOS Intel (x86_64): `ownterm-macos-x86_64.tar.gz`
+            - Linux (x86_64): `ownterm-linux-x86_64.tar.gz`
+            - Windows (x86_64): `ownterm-windows-x86_64.tar.gz`
+
+            ### Checksums
+            See `SHA256SUMS` for integrity verification.

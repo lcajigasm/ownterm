@@ -2,7 +2,7 @@
 set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-repo_dir="${1:-$(cd -- "$script_dir/../upstream" 2>/dev/null && pwd || true)}"
+repo_dir="${1:-$(cd -- "$script_dir/.." && pwd)}"
 
 if [[ -z "$repo_dir" || ! -d "$repo_dir" ]]; then
   echo "Usage: $0 /path/to/warp-checkout" >&2

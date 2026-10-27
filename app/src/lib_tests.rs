@@ -220,6 +220,36 @@ fn startup_auth_is_non_blocking_only_for_tui() {
 }
 
 #[test]
+fn ownterm_app_skips_startup_authentication() {
+    let app = LaunchMode::App {
+        args: Default::default(),
+        api_key: None,
+    };
+
+    assert!(should_skip_startup_authentication(
+        &app,
+        channel::Channel::Oss
+    ));
+    assert!(!should_skip_startup_authentication(
+        &app,
+        channel::Channel::Stable
+    ));
+    assert!(
+        startup_authentication_for_launch(
+            Some("server-key".to_owned()),
+            true,
+            &app,
+            channel::Channel::Oss,
+        )
+        .is_none()
+    );
+
+    assert!(
+        startup_authentication_for_launch(None, true, &app, channel::Channel::Stable,).is_some()
+    );
+}
+
+#[test]
 fn launch_modes_select_expected_logging_frontend() {
     let tui = LaunchMode::Tui {
         entrypoint: TuiEntryPoint::Interactive {

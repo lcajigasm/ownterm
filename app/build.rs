@@ -17,6 +17,7 @@ use warp_util::assets::{
 };
 use warp_util::path::app_target_dir;
 
+#[allow(semicolon_in_expressions_from_non_local_macros)]
 fn main() -> Result<()> {
     cfg_aliases! {
         linux_or_windows: { any(target_os = "linux", windows) },

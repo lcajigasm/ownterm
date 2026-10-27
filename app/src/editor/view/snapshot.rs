@@ -1,4 +1,3 @@
-use core::f32;
 use std::borrow::Cow;
 use std::cmp::{self};
 use std::collections::HashMap;

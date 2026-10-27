@@ -1,7 +1,7 @@
 [package]
 authors = ["Warp Team <dev@warp.dev>"]
-default-run = "warp-oss"
-description = "The cloud-backed terminal for individuals and teams"
+default-run = "ownterm"
+description = "A local-first terminal with direct bring-your-own-model inference"
 edition = "2024"
 autobins = false
 name = "warp"
@@ -18,7 +18,7 @@ path = "src/lib.rs"
 # flag overrides). Otherwise these binaries are exactly identical to our main binary.
 
 [[bin]]
-name = "warp-oss"
+name = "ownterm"
 path = "src/bin/oss.rs"
 test = false
 
@@ -1041,14 +1041,14 @@ stored_screenshots = []
 cloud_agent_shell_respawn = []
 acp_harness = []
 
-[package.metadata.bundle.bin.warp-oss]
+[package.metadata.bundle.bin.ownterm]
 category = "public.app-category.developer-tools"
 copyright = "© 2025, Denver Technologies, Inc"
-identifier = "dev.warp.WarpOss"
-name = "WarpOss"
+identifier = "dev.ownterm.OwnTerm"
+name = "OwnTerm"
 resources = ["assets/onboarding"]
 icon = ["channels/oss/icon/no-padding/512x512.png", "channels/oss/icon/no-padding/icon.ico"]
-short_description = "The open-source, cloud-backed terminal for individuals and teams."
+short_description = "A local-first terminal with direct bring-your-own-model inference."
 
 [package.metadata.bundle.bin.stable]
 category = "public.app-category.developer-tools"

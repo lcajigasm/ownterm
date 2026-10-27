@@ -154,7 +154,7 @@
               "-p"
               "warp"
               "--bin"
-              "warp-oss"
+              "ownterm"
             ];
             inherit buildFeatures;
 
@@ -163,7 +163,7 @@
             doCheck = false;
 
             env = {
-              APPIMAGE_NAME = "WarpOss-${pkgs.stdenv.hostPlatform.parsed.cpu.name}.AppImage";
+              APPIMAGE_NAME = "OwnTerm-${pkgs.stdenv.hostPlatform.parsed.cpu.name}.AppImage";
               LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
               PROTOC = "${pkgs.protobuf}/bin/protoc";
               PROTOC_INCLUDE = "${pkgs.protobuf}/include";
@@ -171,21 +171,21 @@
             };
             postInstall =
               let
-                installDir = "$out/opt/warpdotdev/warp-terminal-experimental";
+                installDir = "$out/opt/ownterm/ownterm";
                 resourcesDir = "${installDir}/resources";
                 releaseChannel = "oss";
                 libraryPath = lib.makeLibraryPath linuxRuntimeLibraries;
                 executablePath = lib.makeBinPath (with pkgs; [ xdg-utils ]);
               in
               ''
-                install -Dm755 "$out/bin/warp-oss" "${installDir}/warp-oss"
-                rm -f "$out/bin/warp-oss"
+                install -Dm755 "$out/bin/ownterm" "${installDir}/ownterm"
+                rm -f "$out/bin/ownterm"
 
                 patchShebangs \
                   ./script/prepare_bundled_resources \
                   ./script/copy_conditional_skills
 
-                SETTINGS_SCHEMA_EXECUTABLE="${installDir}/warp-oss" ./script/prepare_bundled_resources \
+                SETTINGS_SCHEMA_EXECUTABLE="${installDir}/ownterm" ./script/prepare_bundled_resources \
                   "${resourcesDir}" \
                   "${releaseChannel}"
 
@@ -196,40 +196,37 @@
                 install -Dm644 LICENSE-AGPL "$out/share/licenses/warp-terminal-experimental/LICENSE-AGPL"
                 install -Dm644 LICENSE-MIT "$out/share/licenses/warp-terminal-experimental/LICENSE-MIT"
 
-                install -Dm644 app/channels/oss/dev.warp.WarpOss.desktop \
-                  "$out/share/applications/dev.warp.WarpOss.desktop"
-                substituteInPlace "$out/share/applications/dev.warp.WarpOss.desktop" \
-                  --replace-fail "Exec=warp-terminal-oss %U" "Exec=warp-terminal-experimental %U"
+                install -Dm644 app/channels/oss/dev.ownterm.OwnTerm.desktop \
+                  "$out/share/applications/dev.ownterm.OwnTerm.desktop"
 
                 for size in 16x16 32x32 64x64 128x128 256x256 512x512; do
                   icon="app/channels/oss/icon/no-padding/$size.png"
                   if [ -f "$icon" ]; then
                     install -Dm644 "$icon" \
-                      "$out/share/icons/hicolor/$size/apps/dev.warp.WarpOss.png"
+                      "$out/share/icons/hicolor/$size/apps/dev.ownterm.OwnTerm.png"
                   fi
                 done
 
-                wrapProgram "${installDir}/warp-oss" \
+                wrapProgram "${installDir}/ownterm" \
                   --prefix LD_LIBRARY_PATH : "${libraryPath}" \
                   --prefix PATH : "${executablePath}"
 
                 mkdir -p "$out/bin"
-                ln -s "${installDir}/warp-oss" "$out/bin/warp-oss"
-                ln -s "${installDir}/warp-oss" "$out/bin/warp-terminal-experimental"
+                ln -s "${installDir}/ownterm" "$out/bin/ownterm"
               '';
 
             postFixup = lib.optionalString pkgs.stdenv.isLinux ''
-              wrapped="/opt/warpdotdev/warp-terminal-experimental/.warp-oss-wrapped"
+              wrapped="/opt/ownterm/ownterm/.ownterm-wrapped"
               if [ -e "$out$wrapped" ] && ! patchelf --print-needed "$out$wrapped" | grep -q '^libfontconfig\.so\.1$'; then
                 patchelf --add-needed libfontconfig.so.1 "$out$wrapped"
               fi
             '';
 
             meta = {
-              description = "Warp is an agentic development environment, born out of the terminal (Experimental Nix Support, Linux-only).";
-              homepage = "https://www.warp.dev";
+              description = "OwnTerm is a local-first terminal with direct BYOK model access.";
+              homepage = "https://github.com/lcajigasm/ownterm";
               license = lib.licenses.agpl3Only;
-              mainProgram = "warp-terminal-experimental";
+              mainProgram = "ownterm";
               platforms = systems;
               sourceProvenance = with lib.sourceTypes; [ fromSource ];
             };
@@ -295,7 +292,7 @@
         {
           default = pkgs.mkShell {
             inherit nativeBuildInputs buildInputs;
-            APPIMAGE_NAME = "WarpOss-${pkgs.stdenv.hostPlatform.parsed.cpu.name}.AppImage";
+            APPIMAGE_NAME = "OwnTerm-${pkgs.stdenv.hostPlatform.parsed.cpu.name}.AppImage";
             LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
             PROTOC = "${pkgs.protobuf}/bin/protoc";
             PROTOC_INCLUDE = "${pkgs.protobuf}/include";

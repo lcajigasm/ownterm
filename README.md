@@ -5,11 +5,11 @@ OwnTerm is an open-source, local-first terminal derived from the
 terminal and editor experience while removing Warp-specific commercial,
 account, billing, telemetry, cloud-drive, and hosted-agent dependencies.
 
-> **Project status:** foundation and migration plan. The public fork exists at
-> <https://github.com/lcajigasm/ownterm>. The upstream source has not yet been
-> checked out in this local folder because this execution environment blocks
-> GitHub Git and `codeload.github.com` traffic. Do not treat the AI decoupling as
-> implemented until the acceptance checks below pass.
+> **Project status:** active first milestone. The OSS build starts without Warp
+> authentication, removes the business/cloud feature surfaces, uses an
+> OwnTerm-specific application identity and storage namespace, and routes agent
+> requests directly to an OpenAI-compatible endpoint. Broad cross-platform
+> packaging and tool-call compatibility remain in progress.
 
 ## Principles
 
@@ -21,24 +21,36 @@ account, billing, telemetry, cloud-drive, and hosted-agent dependencies.
 - OpenAI-compatible endpoints first, with native provider adapters where useful.
 - The derivative remains open under AGPL-3.0; the Warp UI crates retain MIT.
 
-## Planned workspace
+## Local workspace
 
 ```text
 ownterm/
-├── upstream/                 # checkout of lcajigasm/ownterm (Warp fork)
+├── app/                      # OwnTerm GUI and local provider transport
+├── crates/                   # terminal, UI, persistence, and shared core
 ├── docs/                     # architecture and migration decisions
-├── scripts/                  # bootstrap and dependency audits
+├── scripts/                  # dependency and service-boundary audits
 └── .env.example              # names only; never real secrets
 ```
 
-Create the upstream checkout when network access is available:
+## Run OwnTerm
 
 ```bash
-./scripts/bootstrap-upstream.sh
-./scripts/audit-warp-services.sh
+export OWNTERM_BASE_URL="https://api.openai.com/v1"
+export OWNTERM_MODEL="gpt-5-mini"
+export OWNTERM_API_KEY="..."
+./script/run
 ```
 
-## Definition of done for the first usable release
+`OWNTERM_API_KEY` may be omitted for loopback services such as Ollama or vLLM.
+Plain HTTP is accepted only for loopback addresses. You can also configure a
+custom OpenAI Chat Completions endpoint in the Agent settings; its API key is
+kept in the operating-system credential store.
+
+The OwnTerm channel uses loopback-disabled placeholders for every inherited
+Warp service URL. Direct model traffic uses a separate external HTTP client and
+goes only to the endpoint selected by the user.
+
+## First-milestone acceptance criteria
 
 1. The terminal starts without authentication and works offline.
 2. Shell sessions, tabs, panes, blocks, themes, search, completions, and the
@@ -49,8 +61,9 @@ Create the upstream checkout when network access is available:
 5. Agent requests go directly from the client to that endpoint.
 6. Keys are stored in the operating-system credential store, never preferences,
    logs, crash reports, or the repository.
-7. Tests cover offline startup, streaming responses, cancellation, tool calls,
-   authentication errors, and secret redaction.
+7. Tests cover offline startup, streaming response parsing, cancellation,
+   authentication errors, and secret redaction. Tool-call normalization is a
+   remaining milestone.
 
 ## Licensing and identity
 

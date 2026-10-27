@@ -6,7 +6,7 @@ use warp_core::features::FeatureFlag;
 use warp_multi_agent_api as api;
 
 use super::convert_to::convert_input;
-use super::{ConvertToAPITypeError, RequestParams, ResponseStream};
+use super::{ConvertToAPITypeError, RequestParams, ResponseStream, ownterm_openai};
 use crate::ai::agent::redaction;
 use crate::ai::blocklist::video_recording_enabled;
 use crate::server::server_api::{AIApiError, ServerApi};
@@ -19,6 +19,13 @@ pub async fn generate_multi_agent_output(
     team_scope: RequestTeamScope,
     cancellation_rx: futures::channel::oneshot::Receiver<()>,
 ) -> Result<ResponseStream, ConvertToAPITypeError> {
+    if warp_core::channel::ChannelState::channel() == warp_core::channel::Channel::Oss {
+        if params.should_redact_secrets {
+            redaction::redact_inputs(&mut params.input);
+        }
+        return ownterm_openai::generate(params, cancellation_rx);
+    }
+
     let supported_tools = params
         .supported_tools_override
         .take()

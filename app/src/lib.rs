@@ -1431,17 +1431,18 @@ fn startup_auth_is_non_blocking(launch_mode: &LaunchMode) -> bool {
     matches!(launch_mode, LaunchMode::Tui { .. })
 }
 
-fn should_skip_startup_authentication(launch_mode: &LaunchMode) -> bool {
+fn should_skip_startup_authentication(launch_mode: &LaunchMode, channel: channel::Channel) -> bool {
     matches!(launch_mode, LaunchMode::CommandLine { .. })
-        || matches!(ChannelState::channel(), channel::Channel::Oss)
+        || matches!(channel, channel::Channel::Oss)
 }
 
 fn startup_authentication_for_launch(
     pending_api_key: Option<String>,
     user_is_logged_in: bool,
     launch_mode: &LaunchMode,
+    channel: channel::Channel,
 ) -> Option<StartupUserAuthentication> {
-    if should_skip_startup_authentication(launch_mode) {
+    if should_skip_startup_authentication(launch_mode, channel) {
         return None;
     }
 
@@ -2528,8 +2529,12 @@ pub(crate) fn initialize_app(
     // on IAP here, since the request itself calls the IAP-gated warp-server — except the TUI,
     // which authenticates immediately and resolves IAP out of band (see
     // `startup_auth_is_non_blocking`).
-    let startup_authentication =
-        startup_authentication_for_launch(pending_api_key, user_is_logged_in, launch_mode);
+    let startup_authentication = startup_authentication_for_launch(
+        pending_api_key,
+        user_is_logged_in,
+        launch_mode,
+        ChannelState::channel(),
+    );
     if let Some(authentication) = startup_authentication {
         authenticate_user_after_iap_access(
             authentication,

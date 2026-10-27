@@ -54,7 +54,11 @@ impl SettingsWidget for AboutPageWidget {
     type View = AboutPageView;
 
     fn search_terms(&self) -> &str {
-        "about warp version"
+        if ChannelState::channel() == warp_core::channel::Channel::Oss {
+            "about ownterm version github"
+        } else {
+            "about warp version"
+        }
     }
 
     fn render(
@@ -65,12 +69,7 @@ impl SettingsWidget for AboutPageWidget {
     ) -> Box<dyn Element> {
         let theme = appearance.theme();
         let ui_builder = appearance.ui_builder();
-
-        let image_path = if theme.inferred_color_scheme() == ColorScheme::LightOnDark {
-            "bundled/svg/warp-logo-with-light-title.svg"
-        } else {
-            "bundled/svg/warp-logo-with-dark-title.svg"
-        };
+        let is_oss = ChannelState::channel() == warp_core::channel::Channel::Oss;
 
         let version = ChannelState::app_version().unwrap_or("v#.##.###");
 
@@ -100,32 +99,83 @@ impl SettingsWidget for AboutPageWidget {
                     .finish(),
             ]);
 
-        Align::new(
-            Flex::column()
-                .with_cross_axis_alignment(CrossAxisAlignment::Center)
-                .with_child(
-                    ConstrainedBox::new(
-                        Image::new(
-                            AssetSource::Bundled { path: image_path },
-                            CacheOption::BySize,
+        if is_oss {
+            let header = ui_builder
+                .span("OwnTerm")
+                .build()
+                .with_margin_top(20.)
+                .finish();
+
+            let subtitle = ui_builder
+                .span("Open-source, local-first terminal")
+                .build()
+                .with_margin_top(6.)
+                .finish();
+
+            let repo_link = ui_builder
+                .span("https://github.com/lcajigasm/ownterm")
+                .build()
+                .with_margin_top(12.)
+                .finish();
+
+            let attribution = ui_builder
+                .span("Derived from Warp (© 2026 Warp, AGPL-3.0 / MIT)")
+                .build()
+                .with_margin_top(16.)
+                .finish();
+
+            let disclaimer = ui_builder
+                .span("Independent community project; not affiliated with or endorsed by Warp Services, Inc.")
+                .build()
+                .with_margin_top(4.)
+                .finish();
+
+            Align::new(
+                Flex::column()
+                    .with_cross_axis_alignment(CrossAxisAlignment::Center)
+                    .with_child(header)
+                    .with_child(subtitle)
+                    .with_child(version_row.finish())
+                    .with_child(repo_link)
+                    .with_child(attribution)
+                    .with_child(disclaimer)
+                    .finish(),
+            )
+            .finish()
+        } else {
+            let image_path = if theme.inferred_color_scheme() == ColorScheme::LightOnDark {
+                "bundled/svg/warp-logo-with-light-title.svg"
+            } else {
+                "bundled/svg/warp-logo-with-dark-title.svg"
+            };
+
+            Align::new(
+                Flex::column()
+                    .with_cross_axis_alignment(CrossAxisAlignment::Center)
+                    .with_child(
+                        ConstrainedBox::new(
+                            Image::new(
+                                AssetSource::Bundled { path: image_path },
+                                CacheOption::BySize,
+                            )
+                            .finish(),
                         )
+                        .with_max_height(100.)
+                        .with_max_width(350.)
                         .finish(),
                     )
-                    .with_max_height(100.)
-                    .with_max_width(350.)
+                    .with_child(version_row.finish())
+                    .with_child(
+                        ui_builder
+                            .span("Copyright 2026 Warp")
+                            .build()
+                            .with_margin_top(16.)
+                            .finish(),
+                    )
                     .finish(),
-                )
-                .with_child(version_row.finish())
-                .with_child(
-                    ui_builder
-                        .span("Copyright 2026 Warp")
-                        .build()
-                        .with_margin_top(16.)
-                        .finish(),
-                )
-                .finish(),
-        )
-        .finish()
+            )
+            .finish()
+        }
     }
 }
 

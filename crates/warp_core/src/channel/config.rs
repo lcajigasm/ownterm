@@ -57,6 +57,17 @@ pub struct WarpServerConfig {
 }
 
 impl WarpServerConfig {
+    pub fn disabled() -> Self {
+        Self {
+            server_root_url: "http://127.0.0.1:9".into(),
+            prewarmed_sandbox_control_url: None,
+            rtc_server_url: "ws://127.0.0.1:9/graphql/v2".into(),
+            session_sharing_server_url: None,
+            firebase_auth_api_key: "".into(),
+            iap_config: None,
+        }
+    }
+
     pub fn production() -> Self {
         Self {
             server_root_url: "https://app.warp.dev".into(),
@@ -68,6 +79,10 @@ impl WarpServerConfig {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "config_tests.rs"]
+mod tests;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct OzConfig {
@@ -81,6 +96,13 @@ pub struct OzConfig {
 }
 
 impl OzConfig {
+    pub fn disabled() -> Self {
+        Self {
+            oz_root_url: "http://127.0.0.1:9".into(),
+            workload_audience_url: None,
+        }
+    }
+
     pub fn production() -> Self {
         Self {
             oz_root_url: "https://oz.warp.dev".into(),

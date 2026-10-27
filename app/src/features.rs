@@ -1,11 +1,9 @@
 use std::collections::HashSet;
 
-use warp_core::channel::Channel;
-use warp_core::channel::ChannelState;
+use warp_core::channel::{Channel, ChannelState};
 pub use warp_core::features::*;
 
 const OWNTERM_OSS_DISABLED_FEATURES: &[FeatureFlag] = &[
-    FeatureFlag::AgentMode,
     FeatureFlag::AgentModeWorkflows,
     FeatureFlag::AgentManagementView,
     FeatureFlag::AgentManagementDetailsView,
@@ -48,6 +46,12 @@ const OWNTERM_OSS_DISABLED_FEATURES: &[FeatureFlag] = &[
     FeatureFlag::WarpManagedSecrets,
     FeatureFlag::AgentOnboarding,
     FeatureFlag::AccountFirstOnboarding,
+];
+
+const OWNTERM_OSS_ENABLED_FEATURES: &[FeatureFlag] = &[
+    FeatureFlag::AgentMode,
+    FeatureFlag::APIKeyManagement,
+    FeatureFlag::SoloUserByok,
 ];
 
 /// Mark all features which should be enabled on the current channel as enabled.
@@ -591,8 +595,17 @@ fn enabled_features() -> HashSet<FeatureFlag> {
     ]);
 
     if ChannelState::channel() == Channel::Oss {
-        flags.retain(|flag| !OWNTERM_OSS_DISABLED_FEATURES.contains(flag));
+        apply_ownterm_feature_policy(&mut flags);
     }
 
     flags
 }
+
+fn apply_ownterm_feature_policy(flags: &mut HashSet<FeatureFlag>) {
+    flags.retain(|flag| !OWNTERM_OSS_DISABLED_FEATURES.contains(flag));
+    flags.extend(OWNTERM_OSS_ENABLED_FEATURES);
+}
+
+#[cfg(test)]
+#[path = "features_tests.rs"]
+mod tests;

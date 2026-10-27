@@ -1,0 +1,23 @@
+name: Audit Warp Services Coupling
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  audit:
+    name: Run Warp Services Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run audit script
+        shell: bash
+        run: |
+          chmod +x scripts/audit-warp-services.sh
+          ./scripts/audit-warp-services.sh .
