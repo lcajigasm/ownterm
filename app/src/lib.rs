@@ -1431,6 +1431,25 @@ fn startup_auth_is_non_blocking(launch_mode: &LaunchMode) -> bool {
     matches!(launch_mode, LaunchMode::Tui { .. })
 }
 
+fn should_skip_startup_authentication(launch_mode: &LaunchMode) -> bool {
+    matches!(launch_mode, LaunchMode::CommandLine { .. })
+        || matches!(ChannelState::channel(), channel::Channel::Oss)
+}
+
+fn startup_authentication_for_launch(
+    pending_api_key: Option<String>,
+    user_is_logged_in: bool,
+    launch_mode: &LaunchMode,
+) -> Option<StartupUserAuthentication> {
+    if should_skip_startup_authentication(launch_mode) {
+        return None;
+    }
+
+    pending_api_key
+        .map(StartupUserAuthentication::ApiKey)
+        .or_else(|| user_is_logged_in.then_some(StartupUserAuthentication::RefreshUser))
+}
+
 fn authenticate_user_after_iap_access(
     authentication: StartupUserAuthentication,
     non_blocking: bool,
@@ -1612,12 +1631,14 @@ pub(crate) fn initialize_app(
     }
     let ai_client = server_api_provider.as_ref(ctx).get_ai_client();
     #[cfg(not(target_family = "wasm"))]
-    // Refresh starts only after the authenticated server client exists; tracing initialization
-    // remains responsible for deciding whether this process opted in to cloud-agent export.
-    tracing::start_auth_refresh(
-        server_api_provider.as_ref(ctx).get_managed_secrets_client(),
-        ctx,
-    );
+    if !matches!(ChannelState::channel(), channel::Channel::Oss) {
+        // Refresh starts only after the authenticated server client exists; tracing initialization
+        // remains responsible for deciding whether this process opted in to cloud-agent export.
+        tracing::start_auth_refresh(
+            server_api_provider.as_ref(ctx).get_managed_secrets_client(),
+            ctx,
+        );
+    }
 
     ctx.add_singleton_model(|_ctx| AuthStateProvider::new(auth_state.clone()));
 
@@ -2507,13 +2528,8 @@ pub(crate) fn initialize_app(
     // on IAP here, since the request itself calls the IAP-gated warp-server — except the TUI,
     // which authenticates immediately and resolves IAP out of band (see
     // `startup_auth_is_non_blocking`).
-    let startup_authentication = if matches!(launch_mode, LaunchMode::CommandLine { .. }) {
-        None
-    } else {
-        pending_api_key
-            .map(StartupUserAuthentication::ApiKey)
-            .or_else(|| user_is_logged_in.then_some(StartupUserAuthentication::RefreshUser))
-    };
+    let startup_authentication =
+        startup_authentication_for_launch(pending_api_key, user_is_logged_in, launch_mode);
     if let Some(authentication) = startup_authentication {
         authenticate_user_after_iap_access(
             authentication,

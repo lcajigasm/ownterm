@@ -1,7 +1,54 @@
 use std::collections::HashSet;
 
+use warp_core::channel::Channel;
 use warp_core::channel::ChannelState;
 pub use warp_core::features::*;
+
+const OWNTERM_OSS_DISABLED_FEATURES: &[FeatureFlag] = &[
+    FeatureFlag::AgentMode,
+    FeatureFlag::AgentModeWorkflows,
+    FeatureFlag::AgentManagementView,
+    FeatureFlag::AgentManagementDetailsView,
+    FeatureFlag::InteractiveConversationManagementView,
+    FeatureFlag::AgentView,
+    FeatureFlag::AgentViewBlockContext,
+    FeatureFlag::AgentViewConversationListView,
+    FeatureFlag::AgentTips,
+    FeatureFlag::AmbientAgentsCommandLine,
+    FeatureFlag::AmbientAgentsImageUpload,
+    FeatureFlag::AmbientAgentsRTC,
+    FeatureFlag::ScheduledAmbientAgents,
+    FeatureFlag::CloudEnvironments,
+    FeatureFlag::CloudConversations,
+    FeatureFlag::CloudMode,
+    FeatureFlag::CloudModeFromLocalSession,
+    FeatureFlag::CloudModeImageContext,
+    FeatureFlag::CloudModeSetupV2,
+    FeatureFlag::CloudModeInputV2,
+    FeatureFlag::CloudRunners,
+    FeatureFlag::CloudAgentRunners,
+    FeatureFlag::CloudAgentExecutionConfig,
+    FeatureFlag::CloudAgentShellRespawn,
+    FeatureFlag::CreateEnvironmentSlashCommand,
+    FeatureFlag::ConversationApi,
+    FeatureFlag::DriveObjectsAsContext,
+    FeatureFlag::FactoryMcp,
+    FeatureFlag::PreviewUrlsMcp,
+    FeatureFlag::HandoffLocalCloud,
+    FeatureFlag::HandoffCloudCloud,
+    FeatureFlag::OzPlatformSkills,
+    FeatureFlag::OzIdentityFederation,
+    FeatureFlag::OzLaunchModal,
+    FeatureFlag::OzHandoff,
+    FeatureFlag::SyncAmbientPlans,
+    FeatureFlag::TeamApiKeys,
+    FeatureFlag::NamedAgents,
+    FeatureFlag::UsageBasedPricing,
+    FeatureFlag::BillingAndUsagePageV2,
+    FeatureFlag::WarpManagedSecrets,
+    FeatureFlag::AgentOnboarding,
+    FeatureFlag::AccountFirstOnboarding,
+];
 
 /// Mark all features which should be enabled on the current channel as enabled.
 /// This sets global feature flag state and should never be called in a unit test.
@@ -542,6 +589,10 @@ fn enabled_features() -> HashSet<FeatureFlag> {
         #[cfg(feature = "acp_harness")]
         FeatureFlag::AcpHarness,
     ]);
+
+    if ChannelState::channel() == Channel::Oss {
+        flags.retain(|flag| !OWNTERM_OSS_DISABLED_FEATURES.contains(flag));
+    }
 
     flags
 }
