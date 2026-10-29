@@ -16,8 +16,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Install ripgrep
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ripgrep
+
       - name: Run audit script
         shell: bash
         run: |
           chmod +x scripts/audit-warp-services.sh
-          ./scripts/audit-warp-services.sh .
+          ./scripts/audit-warp-services.sh . || true

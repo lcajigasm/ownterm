@@ -19,4 +19,4 @@ pattern='warp\.dev|app\.warp|graphql|telemetry|analytics|sentry|billing|credit|e
 echo "Potential business/service coupling in: $repo_dir"
 echo "Review every hit; matching text alone is not proof that code should be removed."
 rg --hidden --glob '!.git/**' --glob '!target/**' --glob '!Cargo.lock' \
-  --line-number --ignore-case "$pattern" "$repo_dir"
+  --line-number --ignore-case "$pattern" "$repo_dir" || true

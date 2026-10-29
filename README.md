@@ -8,10 +8,11 @@
 <p align="center">
   <a href="https://github.com/lcajigasm/ownterm/releases/latest"><img src="https://img.shields.io/github/v/release/lcajigasm/ownterm?color=00ff9d&label=Release" alt="Release"></a>
   <a href="https://lcajigasm.github.io/ownterm/"><img src="https://img.shields.io/badge/Website-lcajigasm.github.io%2Fownterm-00d2ff" alt="Website"></a>
+  <a href="https://github.com/lcajigasm/ownterm/actions/workflows/ci.yml"><img src="https://github.com/lcajigasm/ownterm/actions/workflows/ci.yml/badge.svg" alt="CI Build"></a>
+  <a href="https://github.com/lcajigasm/ownterm/actions/workflows/release-ownterm.yml"><img src="https://github.com/lcajigasm/ownterm/actions/workflows/release-ownterm.yml/badge.svg" alt="Release Build"></a>
   <a href="https://github.com/lcajigasm/ownterm/actions/workflows/pages.yml"><img src="https://github.com/lcajigasm/ownterm/actions/workflows/pages.yml/badge.svg" alt="GitHub Pages"></a>
   <a href="LICENSE-AGPL"><img src="https://img.shields.io/badge/License-AGPL%203.0-blue.svg" alt="License: AGPL-3.0"></a>
   <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/UI%20Core-MIT-green.svg" alt="License: MIT"></a>
-  <a href="https://github.com/lcajigasm/ownterm/actions/workflows/release-ownterm.yml"><img src="https://github.com/lcajigasm/ownterm/actions/workflows/release-ownterm.yml/badge.svg" alt="Release Build"></a>
   <a href="https://github.com/lcajigasm/ownterm/actions/workflows/audit-services.yml"><img src="https://github.com/lcajigasm/ownterm/actions/workflows/audit-services.yml/badge.svg" alt="Zero-Telemetry Audit"></a>
 </p>
 
