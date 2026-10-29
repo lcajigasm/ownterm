@@ -1,22 +1,66 @@
-name: OwnTerm CI
+name: OwnTerm CI & Release
 
 on:
   push:
     branches:
       - master
-  pull_request:
-    branches:
-      - master
   workflow_dispatch:
+    inputs:
+      version_tag:
+        description: 'Optional custom release tag (e.g. v0.2.0)'
+        required: false
+        default: ''
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
+  prepare-version:
+    name: Determine Next Release Version
+    runs-on: ubuntu-latest
+    outputs:
+      new_tag: ${{ steps.calc_tag.outputs.new_tag }}
+      version: ${{ steps.calc_tag.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calculate Version Tag
+        id: calc_tag
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.version_tag }}" ]; then
+            TAG="${{ github.event.inputs.version_tag }}"
+            if [[ ! "$TAG" =~ ^v ]]; then
+              TAG="v$TAG"
+            fi
+            VER="${TAG#v}"
+          else
+            git fetch --tags --force
+            LATEST_TAG=$(git tag -l "v*" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)
+            echo "Latest semantic tag: $LATEST_TAG"
+            if [ -z "$LATEST_TAG" ]; then
+              TAG="v0.1.0"
+              VER="0.1.0"
+            else
+              VER="${LATEST_TAG#v}"
+              IFS='.' read -r MAJOR MINOR PATCH <<< "$VER"
+              NEW_PATCH=$((PATCH + 1))
+              TAG="v${MAJOR}.${MINOR}.${NEW_PATCH}"
+              VER="${MAJOR}.${MINOR}.${NEW_PATCH}"
+            fi
+          fi
+          echo "Next release tag: $TAG"
+          echo "Next release version: $VER"
+          echo "new_tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
   audit:
     name: Audit Zero-Telemetry & Anti-Coupling
     runs-on: ubuntu-latest
@@ -37,6 +81,7 @@ jobs:
 
   build:
     name: Build (${{ matrix.os }} - ${{ matrix.target }})
+    needs: [prepare-version]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -67,6 +112,11 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
+      - name: Ensure Rust Target Installed
+        shell: bash
+        run: |
+          rustup target add ${{ matrix.target }}
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
@@ -154,3 +204,65 @@ jobs:
           path: |
             ${{ matrix.artifact_name }}.tar.gz
             ${{ matrix.artifact_name }}.tar.gz.sha256
+
+  deploy-release:
+    name: Deploy Multi-Platform Release
+    needs: [prepare-version, audit, build]
+    if: github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Consolidate Artifacts & Checksums
+        shell: bash
+        run: |
+          mkdir -p dist
+          find release-artifacts -type f -name "*.tar.gz" -exec cp {} dist/ \;
+          find release-artifacts -type f -name "*.sha256" -exec cat {} + > dist/SHA256SUMS
+          echo "Consolidated checksums:"
+          cat dist/SHA256SUMS
+
+      - name: Create & Push Git Tag
+        shell: bash
+        run: |
+          TAG="${{ needs.prepare-version.outputs.new_tag }}"
+          echo "Tagging commit with $TAG..."
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "OwnTerm Release $TAG"
+          git push origin "$TAG" --force
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare-version.outputs.new_tag }}
+          name: OwnTerm ${{ needs.prepare-version.outputs.new_tag }}
+          draft: false
+          prerelease: false
+          files: |
+            dist/*
+          body: |
+            # OwnTerm ${{ needs.prepare-version.outputs.new_tag }}
+
+            Automated multi-platform release of **OwnTerm** — the open-source, local-first, privacy-focused terminal emulator.
+
+            ### Downloadable Packages
+
+            | Operating System | Architecture | Package | Checksum |
+            | :--- | :--- | :--- | :--- |
+            | **macOS** | Apple Silicon (M1/M2/M3/M4) | [`ownterm-macos-arm64.tar.gz`](https://github.com/lcajigasm/ownterm/releases/download/${{ needs.prepare-version.outputs.new_tag }}/ownterm-macos-arm64.tar.gz) | `SHA256` in SHA256SUMS |
+            | **macOS** | Intel (x86_64) | [`ownterm-macos-x86_64.tar.gz`](https://github.com/lcajigasm/ownterm/releases/download/${{ needs.prepare-version.outputs.new_tag }}/ownterm-macos-x86_64.tar.gz) | `SHA256` in SHA256SUMS |
+            | **Linux** | x86_64 (glibc 2.31+) | [`ownterm-linux-x86_64.tar.gz`](https://github.com/lcajigasm/ownterm/releases/download/${{ needs.prepare-version.outputs.new_tag }}/ownterm-linux-x86_64.tar.gz) | `SHA256` in SHA256SUMS |
+            | **Windows** | x86_64 (Windows 10 / 11) | [`ownterm-windows-x86_64.tar.gz`](https://github.com/lcajigasm/ownterm/releases/download/${{ needs.prepare-version.outputs.new_tag }}/ownterm-windows-x86_64.tar.gz) | `SHA256` in SHA256SUMS |
+
+            ### Integrity Verification
+            Verify downloaded packages using the attached `SHA256SUMS` file:
+            ```bash
+            sha256sum -c SHA256SUMS
+            ```

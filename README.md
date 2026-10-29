@@ -8,8 +8,7 @@
 <p align="center">
   <a href="https://github.com/lcajigasm/ownterm/releases/latest"><img src="https://img.shields.io/github/v/release/lcajigasm/ownterm?color=00ff9d&label=Release" alt="Release"></a>
   <a href="https://lcajigasm.github.io/ownterm/"><img src="https://img.shields.io/badge/Website-lcajigasm.github.io%2Fownterm-00d2ff" alt="Website"></a>
-  <a href="https://github.com/lcajigasm/ownterm/actions/workflows/ci.yml"><img src="https://github.com/lcajigasm/ownterm/actions/workflows/ci.yml/badge.svg" alt="CI Build"></a>
-  <a href="https://github.com/lcajigasm/ownterm/actions/workflows/release-ownterm.yml"><img src="https://github.com/lcajigasm/ownterm/actions/workflows/release-ownterm.yml/badge.svg" alt="Release Build"></a>
+  <a href="https://github.com/lcajigasm/ownterm/actions/workflows/ci.yml"><img src="https://github.com/lcajigasm/ownterm/actions/workflows/ci.yml/badge.svg" alt="CI &amp; Release"></a>
   <a href="https://github.com/lcajigasm/ownterm/actions/workflows/pages.yml"><img src="https://github.com/lcajigasm/ownterm/actions/workflows/pages.yml/badge.svg" alt="GitHub Pages"></a>
   <a href="LICENSE-AGPL"><img src="https://img.shields.io/badge/License-AGPL%203.0-blue.svg" alt="License: AGPL-3.0"></a>
   <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/UI%20Core-MIT-green.svg" alt="License: MIT"></a>
@@ -245,11 +244,32 @@ WARP_LOCAL_SKIP_METAL=1 cargo test -p warp --lib ownterm
 
 ## Releasing New Versions
 
-OwnTerm includes complete automation for versioning, building, and publishing multi-platform releases.
+OwnTerm includes full automated continuous delivery for versioning, building, and publishing multi-platform releases.
 
-### 1. Automated Version Bump Script
+### 1. Automated Release Pipeline on Master
 
-To bump the version across all project manifests (`app/Cargo.toml`, macOS bundle plist, Windows installers, documentation, and the landing page), use the included script:
+Every push to the `master` branch triggers the unified [`.github/workflows/ci.yml`](.github/workflows/ci.yml) workflow:
+
+1. **Automatic Version Tagging**: Automatically queries the latest release tag (e.g. `v0.1.0`), increments the patch version (`v0.1.1`), tags the commit, and pushes the new tag to origin.
+2. **Cross-Compilation Matrix**:
+   - macOS Apple Silicon (`aarch64-apple-darwin` on `macos-14`)
+   - macOS Intel (`x86_64-apple-darwin` on `macos-14` cross-compilation)
+   - Linux (`x86_64-unknown-linux-gnu` on `ubuntu-22.04`)
+   - Windows (`x86_64-pc-windows-msvc` on `windows-latest`)
+3. **Builds GUI & TUI**:
+   - `ownterm` (GPU desktop application)
+   - `ownterm-tui` (headless console binary)
+4. **Packaging & Checksums**:
+   - Compresses release archives (`.tar.gz`) for every operating system
+   - Generates consolidated `SHA256SUMS` for integrity verification
+5. **GitHub Releases Deployment**:
+   - Publishes an official GitHub Release under the incremented tag with all platform packages attached and ready for download.
+
+*(Releases can also be triggered manually via GitHub Actions with a custom tag via the **Actions -> OwnTerm CI & Release -> Run workflow** button.)*
+
+### 2. Manual Version Bump Script
+
+To manually bump versions across manifests (`app/Cargo.toml`, Windows installers, and documentation) prior to committing, use:
 
 ```bash
 # Bump version and inspect changes
@@ -258,29 +278,9 @@ To bump the version across all project manifests (`app/Cargo.toml`, macOS bundle
 # Bump version, commit changes, and create the git tag
 ./script/bump-version.sh 0.1.1 --tag
 
-# Bump, tag, and push directly to GitHub to trigger CI/CD
-./script/bump-version.sh 0.1.1 --push
+# Push to master to trigger the automated CI/CD deployment
+git push origin master
 ```
-
-### 2. Multi-Platform CI/CD Pipeline
-
-When a tag matching `v*` (e.g. `v0.1.1`) is pushed, the [`.github/workflows/release-ownterm.yml`](.github/workflows/release-ownterm.yml) workflow executes automatically:
-
-1. **Cross-Compilation Matrix**:
-   - macOS Apple Silicon (`aarch64-apple-darwin` on `macos-14`)
-   - macOS Intel (`x86_64-apple-darwin` on `macos-13`)
-   - Linux (`x86_64-unknown-linux-gnu` on `ubuntu-22.04`)
-   - Windows (`x86_64-pc-windows-msvc` on `windows-latest`)
-2. **Builds GUI & TUI**:
-   - `ownterm` (GPU desktop application)
-   - `ownterm-tui` (headless console binary)
-3. **Packaging & Checksums**:
-   - Generates compressed release archives (`.tar.gz`)
-   - Computes SHA256 checksums and publishes a consolidated `SHA256SUMS` file
-4. **GitHub Releases**:
-   - Publishes an official GitHub Release with release notes and assets ready for download.
-
-*(Releases can also be triggered manually via GitHub Actions with custom tag parameters via the **Actions -> Release OwnTerm -> Run workflow** button.)*
 
 ---
 
