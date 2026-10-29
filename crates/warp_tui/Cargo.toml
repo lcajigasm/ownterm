@@ -1,17 +1,23 @@
 [package]
 name = "warp_tui"
 edition = "2024"
-description = "Warp Agent CLI"
+description = "OwnTerm Headless TUI and Agent CLI"
 authors.workspace = true
 publish.workspace = true
 license.workspace = true
 autobins = false
-default-run = "warp-tui-oss"
+default-run = "ownterm-tui"
+homepage = "https://lcajigasm.github.io/ownterm/"
+repository = "https://github.com/lcajigasm/ownterm"
 
 # One binary per channel, mirroring the GUI app's `app/src/bin/*` layout. The
 # OSS bin is the `default-run` so bare `cargo run -p warp_tui` builds without
 # the internal `warp-channel-config` generator; `./script/run-tui` selects the
 # local bin when the generator is available.
+[[bin]]
+name = "ownterm-tui"
+path = "src/bin/oss.rs"
+
 [[bin]]
 name = "warp-tui-oss"
 path = "src/bin/oss.rs"

@@ -454,13 +454,52 @@
       border-color: var(--primary);
     }
 
+    /* Quickstart Tabs */
+    .tab-bar {
+      display: flex;
+      gap: 10px;
+      margin-top: 36px;
+      overflow-x: auto;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 10px 18px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+      font-family: inherit;
+    }
+    .tab-btn:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .tab-btn.active {
+      color: var(--primary);
+      border-bottom: 2px solid var(--primary);
+      background: rgba(0, 255, 157, 0.05);
+    }
+    .tab-pane {
+      display: none;
+    }
+    .tab-pane.active {
+      display: block;
+    }
+
     /* Quickstart / Config Snippets */
     .code-container {
       background: var(--terminal-body);
       border: 1px solid var(--border);
       border-radius: var(--radius-md);
       padding: 24px;
-      margin-top: 30px;
+      margin-top: 20px;
       font-family: 'Fira Code', monospace;
       font-size: 0.9rem;
       position: relative;
@@ -731,26 +770,80 @@
         <p>Point OwnTerm to any OpenAI-compatible engine on your machine or cloud.</p>
       </div>
 
-      <div class="code-container">
-        <button class="copy-btn" onclick="copySnippet('ollama-snippet')">Copy</button>
-        <pre><code id="ollama-snippet"><span class="comment"># 1. Start your local Ollama instance</span>
+      <div class="tab-bar">
+        <button class="tab-btn active" onclick="switchTab('tab-ollama', this)">Ollama</button>
+        <button class="tab-btn" onclick="switchTab('tab-vllm', this)">vLLM</button>
+        <button class="tab-btn" onclick="switchTab('tab-lmstudio', this)">LM Studio</button>
+        <button class="tab-btn" onclick="switchTab('tab-cloud', this)">Cloud (OpenRouter / OpenAI)</button>
+        <button class="tab-btn" onclick="switchTab('tab-tui', this)">Headless TUI</button>
+      </div>
+
+      <!-- Tab Ollama -->
+      <div id="tab-ollama" class="tab-pane active">
+        <div class="code-container">
+          <button class="copy-btn" onclick="copySnippet('ollama-snippet')">Copy</button>
+          <pre><code id="ollama-snippet"><span class="comment"># 1. Pull and start your local Ollama model</span>
 ollama run llama3.3
 
-<span class="comment"># 2. Launch OwnTerm with direct local inference</span>
+<span class="comment"># 2. Launch OwnTerm with direct local loopback inference</span>
 <span class="keyword">export</span> OWNTERM_BASE_URL=<span class="string">"http://localhost:11434/v1"</span>
 <span class="keyword">export</span> OWNTERM_MODEL=<span class="string">"llama3.3"</span>
 
 ./script/run</code></pre>
+        </div>
       </div>
 
-      <div class="code-container">
-        <button class="copy-btn" onclick="copySnippet('openai-snippet')">Copy</button>
-        <pre><code id="openai-snippet"><span class="comment"># Using OpenRouter or OpenAI</span>
+      <!-- Tab vLLM -->
+      <div id="tab-vllm" class="tab-pane">
+        <div class="code-container">
+          <button class="copy-btn" onclick="copySnippet('vllm-snippet')">Copy</button>
+          <pre><code id="vllm-snippet"><span class="comment"># 1. Serve high-throughput model with vLLM</span>
+vllm serve Qwen/Qwen2.5-Coder-7B-Instruct --port 8000
+
+<span class="comment"># 2. Point OwnTerm to the vLLM server</span>
+<span class="keyword">export</span> OWNTERM_BASE_URL=<span class="string">"http://localhost:8000/v1"</span>
+<span class="keyword">export</span> OWNTERM_MODEL=<span class="string">"Qwen/Qwen2.5-Coder-7B-Instruct"</span>
+
+./script/run</code></pre>
+        </div>
+      </div>
+
+      <!-- Tab LM Studio -->
+      <div id="tab-lmstudio" class="tab-pane">
+        <div class="code-container">
+          <button class="copy-btn" onclick="copySnippet('lmstudio-snippet')">Copy</button>
+          <pre><code id="lmstudio-snippet"><span class="comment"># 1. Start Local Server in LM Studio (default: port 1234)</span>
+<span class="comment"># 2. Run OwnTerm with your selected LM Studio model</span>
+<span class="keyword">export</span> OWNTERM_BASE_URL=<span class="string">"http://localhost:1234/v1"</span>
+<span class="keyword">export</span> OWNTERM_MODEL=<span class="string">"qwen2.5-coder-7b-instruct"</span>
+
+./script/run</code></pre>
+        </div>
+      </div>
+
+      <!-- Tab Cloud -->
+      <div id="tab-cloud" class="tab-pane">
+        <div class="code-container">
+          <button class="copy-btn" onclick="copySnippet('cloud-snippet')">Copy</button>
+          <pre><code id="cloud-snippet"><span class="comment"># Using OpenRouter, OpenAI, or Groq (keys stored in OS Keyring)</span>
 <span class="keyword">export</span> OWNTERM_BASE_URL=<span class="string">"https://openrouter.ai/api/v1"</span>
 <span class="keyword">export</span> OWNTERM_MODEL=<span class="string">"anthropic/claude-3.5-sonnet"</span>
 <span class="keyword">export</span> OWNTERM_API_KEY=<span class="string">"sk-or-v1-..."</span>
 
 ./script/run</code></pre>
+        </div>
+      </div>
+
+      <!-- Tab TUI -->
+      <div id="tab-tui" class="tab-pane">
+        <div class="code-container">
+          <button class="copy-btn" onclick="copySnippet('tui-snippet')">Copy</button>
+          <pre><code id="tui-snippet"><span class="comment"># Run headless console TUI for SSH sessions, tmux, or containers</span>
+./script/run-tui
+
+<span class="comment"># Or run compiled standalone binary directly</span>
+ownterm-tui</code></pre>
+        </div>
       </div>
     </section>
 
@@ -814,6 +907,8 @@ ollama run llama3.3
               <th>Upstream Warp</th>
               <th>Alacritty</th>
               <th>Ghostty</th>
+              <th>WezTerm</th>
+              <th>Kitty</th>
             </tr>
           </thead>
           <tbody>
@@ -823,11 +918,15 @@ ollama run llama3.3
               <td><span class="check">✓ Mandatory</span></td>
               <td><span class="cross">✕ Never</span></td>
               <td><span class="cross">✕ Never</span></td>
+              <td><span class="cross">✕ Never</span></td>
+              <td><span class="cross">✕ Never</span></td>
             </tr>
             <tr>
               <td>Telemetry &amp; Tracking</td>
               <td class="highlight-col"><span class="cross">✕ Zero</span></td>
               <td><span class="check">✓ Always on</span></td>
+              <td><span class="cross">✕ Zero</span></td>
+              <td><span class="cross">✕ Zero</span></td>
               <td><span class="cross">✕ Zero</span></td>
               <td><span class="cross">✕ Zero</span></td>
             </tr>
@@ -837,11 +936,15 @@ ollama run llama3.3
               <td><span class="cross">✕ Cloud only</span></td>
               <td><span class="cross">✕ None</span></td>
               <td><span class="cross">✕ None</span></td>
+              <td><span class="cross">✕ None</span></td>
+              <td><span class="cross">✕ None</span></td>
             </tr>
             <tr>
               <td>Agent Tool Calling &amp; Execution</td>
               <td class="highlight-col"><span class="check">✓ Built-in</span></td>
               <td><span class="check">✓ Cloud subscription</span></td>
+              <td><span class="cross">✕ None</span></td>
+              <td><span class="cross">✕ None</span></td>
               <td><span class="cross">✕ None</span></td>
               <td><span class="cross">✕ None</span></td>
             </tr>
@@ -851,6 +954,26 @@ ollama run llama3.3
               <td><span class="check">✓ Yes</span></td>
               <td><span class="cross">✕ Classic grid</span></td>
               <td><span class="cross">✕ Classic grid</span></td>
+              <td><span class="cross">✕ Classic grid</span></td>
+              <td><span class="cross">✕ Classic grid</span></td>
+            </tr>
+            <tr>
+              <td>GPU Acceleration</td>
+              <td class="highlight-col"><span class="check">✓ Metal / GL</span></td>
+              <td><span class="check">✓ Metal / GL</span></td>
+              <td><span class="check">✓ OpenGL</span></td>
+              <td><span class="check">✓ Metal / GL</span></td>
+              <td><span class="check">✓ GL / Vulkan</span></td>
+              <td><span class="check">✓ OpenGL</span></td>
+            </tr>
+            <tr>
+              <td>Headless TUI Included</td>
+              <td class="highlight-col"><span class="check">✓ Yes (`ownterm-tui`)</span></td>
+              <td><span class="cross">✕ No</span></td>
+              <td><span class="cross">✕ No</span></td>
+              <td><span class="cross">✕ No</span></td>
+              <td><span class="cross">✕ No</span></td>
+              <td><span class="cross">✕ No</span></td>
             </tr>
             <tr>
               <td>Open Source License</td>
@@ -858,6 +981,8 @@ ollama run llama3.3
               <td>Partial / Closed services</td>
               <td><span class="check">✓ Apache 2.0</span></td>
               <td><span class="check">✓ MIT</span></td>
+              <td><span class="check">✓ MIT</span></td>
+              <td><span class="check">✓ GPLv3</span></td>
             </tr>
           </tbody>
         </table>
@@ -900,6 +1025,18 @@ ollama run llama3.3
         btn.innerText = 'Copied!';
         setTimeout(() => { btn.innerText = 'Copy'; }, 2000);
       });
+    }
+
+    function switchTab(tabId, btn) {
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      const activePane = document.getElementById(tabId);
+      if (activePane) {
+        activePane.classList.add('active');
+      }
+      if (btn) {
+        btn.classList.add('active');
+      }
     }
   </script>
 </body>

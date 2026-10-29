@@ -97,7 +97,12 @@ Este documento detalla todas las tareas organizadas por fases para alcanzar vers
     4. Compilación del binario GUI (`ownterm`) y TUI (`ownterm-tui`).
     5. Empaquetado de artefactos comprimidos (`.tar.gz`).
     6. Generación consolidada de sumas de verificación `SHA256SUMS`.
-    7. Publicación automática de Release en GitHub con los artefactos listos para descarga.
+    7. Publicación automática de Release en GitHub con los artefactos listos para descarga (`draft: false`).
+- [x] **Script de incremento de versión (`script/bump-version.sh`)**:
+  - Automatización de sincronización de versiones en `app/Cargo.toml`, `app/src/bin/oss.rs`, instaladores Inno Setup de Windows (`script/windows/`), `README.md` y `docs/index.html`.
+  - Creación automática de commit y etiqueta Git (`--tag`).
+- [x] **Despliegue Continuo de la Landing Page en GitHub Pages (`.github/workflows/pages.yml`)**:
+  - Automatización de publicación estática de `docs/` en `https://lcajigasm.github.io/ownterm/` en cada push a `master`.
 
 ---
 
@@ -112,4 +117,25 @@ Este documento detalla todas las tareas organizadas por fases para alcanzar vers
   - Mantenidos los archivos de licencia `LICENSE-AGPL` y `LICENSE-MIT`.
   - Preservadas las notas de copyright de los autores originales de Warp y declarada la marca independiente de OwnTerm en la interfaz y documentación.
 
-<!-- GOAL_COMPLETE -->
+---
+
+## Procedimiento Operativo para Liberar Nuevas Versiones
+
+Para publicar una nueva versión de OwnTerm:
+
+```bash
+# 1. Asegurar que el árbol de trabajo esté limpio
+git status
+
+# 2. Ejecutar el script de incremento de versión y etiquetado
+./script/bump-version.sh 0.1.1 --tag
+
+# 3. Empujar la rama y la nueva etiqueta a GitHub
+git push origin master --tags
+```
+
+Esto disparará de forma totalmente automatizada:
+1. El workflow `.github/workflows/release-ownterm.yml` compilando para macOS (Apple Silicon y x86_64), Linux (x86_64) y Windows (x86_64).
+2. La generación de los archivos comprimidos `.tar.gz` y `SHA256SUMS`.
+3. La creación y publicación inmediata del Release en GitHub.
+4. La actualización continua de la landing page en `https://lcajigasm.github.io/ownterm/` via `.github/workflows/pages.yml`.

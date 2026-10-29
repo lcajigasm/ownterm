@@ -8,6 +8,7 @@
 <p align="center">
   <a href="https://github.com/lcajigasm/ownterm/releases/latest"><img src="https://img.shields.io/github/v/release/lcajigasm/ownterm?color=00ff9d&label=Release" alt="Release"></a>
   <a href="https://lcajigasm.github.io/ownterm/"><img src="https://img.shields.io/badge/Website-lcajigasm.github.io%2Fownterm-00d2ff" alt="Website"></a>
+  <a href="https://github.com/lcajigasm/ownterm/actions/workflows/pages.yml"><img src="https://github.com/lcajigasm/ownterm/actions/workflows/pages.yml/badge.svg" alt="GitHub Pages"></a>
   <a href="LICENSE-AGPL"><img src="https://img.shields.io/badge/License-AGPL%203.0-blue.svg" alt="License: AGPL-3.0"></a>
   <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/UI%20Core-MIT-green.svg" alt="License: MIT"></a>
   <a href="https://github.com/lcajigasm/ownterm/actions/workflows/release-ownterm.yml"><img src="https://github.com/lcajigasm/ownterm/actions/workflows/release-ownterm.yml/badge.svg" alt="Release Build"></a>
@@ -37,6 +38,8 @@ Visit the official website for interactive demos, feature overviews, and release
 - [Comparison Matrix](#comparison-matrix)
 - [Security & Zero-Telemetry Guarantee](#security--zero-telemetry-guarantee)
 - [Building from Source](#building-from-source)
+- [Releasing New Versions](#releasing-new-versions)
+- [Continuous Integration & GitHub Pages](#continuous-integration--github-pages)
 - [Licensing and Trademarks](#licensing-and-trademarks)
 
 ---
@@ -176,16 +179,16 @@ OwnTerm includes a headless terminal client (`crates/warp_tui`) designed for rem
 
 ## Comparison Matrix
 
-| Feature | OwnTerm | Upstream Warp | Alacritty | Ghostty |
-| :--- | :---: | :---: | :---: | :---: |
-| **Account / Login Required** | **Never** ✕ | Mandatory ✓ | **Never** ✕ | **Never** ✕ |
-| **Telemetry & Metrics** | **Zero** ✕ | Always on ✓ | **Zero** ✕ | **Zero** ✕ |
-| **Local LLMs (Ollama / vLLM)** | **Native 1st-Class** ✓ | Cloud only ✕ | None ✕ | None ✕ |
-| **Agent Tool Calling** | **Native** ✓ | Cloud subscription ✓ | None ✕ | None ✕ |
-| **Block-Based Terminal** | **Yes** ✓ | Yes ✓ | Classic grid ✕ | Classic grid ✕ |
-| **GPU Acceleration** | **Metal / OpenGL** ✓ | Metal / OpenGL ✓ | OpenGL ✓ | Metal / OpenGL ✓ |
-| **Headless TUI Included** | **Yes (`ownterm-tui`)** ✓ | No ✕ | No ✕ | No ✕ |
-| **License** | **AGPL-3.0 / MIT** | Proprietary services | Apache 2.0 | MIT |
+| Feature | OwnTerm | Upstream Warp | Alacritty | Ghostty | WezTerm | Kitty |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Account / Login Required** | **Never** ✕ | Mandatory ✓ | **Never** ✕ | **Never** ✕ | **Never** ✕ | **Never** ✕ |
+| **Telemetry & Metrics** | **Zero** ✕ | Always on ✓ | **Zero** ✕ | **Zero** ✕ | **Zero** ✕ | **Zero** ✕ |
+| **Local LLMs (Ollama / vLLM)** | **Native 1st-Class** ✓ | Cloud only ✕ | None ✕ | None ✕ | None ✕ | None ✕ |
+| **Agent Tool Calling** | **Native** ✓ | Cloud subscription ✓ | None ✕ | None ✕ | None ✕ | None ✕ |
+| **Block-Based Terminal** | **Yes** ✓ | Yes ✓ | Classic grid ✕ | Classic grid ✕ | Classic grid ✕ | Classic grid ✕ |
+| **GPU Acceleration** | **Metal / OpenGL** ✓ | Metal / OpenGL ✓ | OpenGL ✓ | Metal / OpenGL ✓ | OpenGL / Vulkan ✓ | OpenGL ✓ |
+| **Headless TUI Included** | **Yes (`ownterm-tui`)** ✓ | No ✕ | No ✕ | No ✕ | No ✕ | No ✕ |
+| **License** | **AGPL-3.0 / MIT** | Proprietary services | Apache 2.0 | MIT | MIT | GPLv3 |
 
 ---
 
@@ -236,6 +239,54 @@ cargo test -p warp_core
 # Run OwnTerm inference and agent tests
 WARP_LOCAL_SKIP_METAL=1 cargo test -p warp --lib ownterm
 ```
+
+---
+
+## Releasing New Versions
+
+OwnTerm includes complete automation for versioning, building, and publishing multi-platform releases.
+
+### 1. Automated Version Bump Script
+
+To bump the version across all project manifests (`app/Cargo.toml`, macOS bundle plist, Windows installers, documentation, and the landing page), use the included script:
+
+```bash
+# Bump version and inspect changes
+./script/bump-version.sh 0.1.1
+
+# Bump version, commit changes, and create the git tag
+./script/bump-version.sh 0.1.1 --tag
+
+# Bump, tag, and push directly to GitHub to trigger CI/CD
+./script/bump-version.sh 0.1.1 --push
+```
+
+### 2. Multi-Platform CI/CD Pipeline
+
+When a tag matching `v*` (e.g. `v0.1.1`) is pushed, the [`.github/workflows/release-ownterm.yml`](.github/workflows/release-ownterm.yml) workflow executes automatically:
+
+1. **Cross-Compilation Matrix**:
+   - macOS Apple Silicon (`aarch64-apple-darwin` on `macos-14`)
+   - macOS Intel (`x86_64-apple-darwin` on `macos-13`)
+   - Linux (`x86_64-unknown-linux-gnu` on `ubuntu-22.04`)
+   - Windows (`x86_64-pc-windows-msvc` on `windows-latest`)
+2. **Builds GUI & TUI**:
+   - `ownterm` (GPU desktop application)
+   - `ownterm-tui` (headless console binary)
+3. **Packaging & Checksums**:
+   - Generates compressed release archives (`.tar.gz`)
+   - Computes SHA256 checksums and publishes a consolidated `SHA256SUMS` file
+4. **GitHub Releases**:
+   - Publishes an official GitHub Release with release notes and assets ready for download.
+
+*(Releases can also be triggered manually via GitHub Actions with custom tag parameters via the **Actions -> Release OwnTerm -> Run workflow** button.)*
+
+---
+
+## Continuous Integration & GitHub Pages
+
+- **GitHub Pages Landing Page**: The official landing website located in `docs/` is automatically deployed on every push to `master` via [`.github/workflows/pages.yml`](.github/workflows/pages.yml). The live site is available at [https://lcajigasm.github.io/ownterm/](https://lcajigasm.github.io/ownterm/).
+- **Zero-Telemetry Audit**: Every commit and pull request is scanned by [`.github/workflows/audit-services.yml`](.github/workflows/audit-services.yml) to prevent accidental introduction of remote endpoints, telemetry tracking, or proprietary services.
 
 ---
 

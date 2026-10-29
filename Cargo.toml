@@ -23,9 +23,11 @@ default-members = [
 ]
 
 [workspace.package]
-authors = ["Warp Team <dev@warp.dev>"]
+authors = ["OwnTerm Contributors <dev@ownterm.dev>"]
 license = "AGPL-3.0-only"
 publish = false
+homepage = "https://lcajigasm.github.io/ownterm/"
+repository = "https://github.com/lcajigasm/ownterm"
 
 [workspace.dependencies]
 # Local workspace crates. This lets us reference them in other crates without specifying a path.

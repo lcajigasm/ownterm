@@ -1,11 +1,13 @@
 [package]
-authors = ["Warp Team <dev@warp.dev>"]
+authors = ["OwnTerm Contributors <dev@ownterm.dev>"]
 default-run = "ownterm"
 description = "A local-first terminal with direct bring-your-own-model inference"
 edition = "2024"
 autobins = false
 name = "warp"
 version = "0.1.0"
+homepage = "https://lcajigasm.github.io/ownterm/"
+repository = "https://github.com/lcajigasm/ownterm"
 publish.workspace = true
 license.workspace = true
 

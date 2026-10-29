@@ -87,7 +87,7 @@ jobs:
         shell: bash
         run: |
           cargo build --release --target ${{ matrix.target }} -p warp --bin ownterm
-          cargo build --release --target ${{ matrix.target }} -p warp_tui --bin warp-tui
+          cargo build --release --target ${{ matrix.target }} -p warp_tui --bin ownterm-tui
 
       - name: Package Artifacts (Unix)
         if: runner.os != 'Windows'
@@ -95,7 +95,7 @@ jobs:
         run: |
           mkdir -p staging
           cp "target/${{ matrix.target }}/release/ownterm" staging/ownterm
-          cp "target/${{ matrix.target }}/release/warp-tui" staging/ownterm-tui
+          cp "target/${{ matrix.target }}/release/ownterm-tui" staging/ownterm-tui
           cp README.md staging/
           cp LICENSE-AGPL staging/ || true
           cp LICENSE-MIT staging/ || true
@@ -113,7 +113,7 @@ jobs:
         run: |
           mkdir -p staging
           cp "target/${{ matrix.target }}/release/ownterm.exe" staging/ownterm.exe
-          cp "target/${{ matrix.target }}/release/warp-tui.exe" staging/ownterm-tui.exe
+          cp "target/${{ matrix.target }}/release/ownterm-tui.exe" staging/ownterm-tui.exe
           cp README.md staging/
           cp LICENSE-AGPL staging/ || true
           cp LICENSE-MIT staging/ || true
@@ -157,12 +157,12 @@ jobs:
         with:
           tag_name: ${{ github.ref_name || github.event.inputs.tag_name }}
           name: OwnTerm Release ${{ github.ref_name || github.event.inputs.tag_name }}
-          draft: true
+          draft: false
           prerelease: false
           files: |
             dist/*
           body: |
-            # OwnTerm Release
+            # OwnTerm Release ${{ github.ref_name || github.event.inputs.tag_name }}
 
             OwnTerm is an open-source, local-first, privacy-focused terminal emulator.
 
