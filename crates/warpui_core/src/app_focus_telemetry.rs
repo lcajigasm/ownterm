@@ -14,6 +14,9 @@ impl DailyAppFocusDuration {
     // Daily App Focus event with the current duration.
     #[allow(deprecated)]
     fn try_record(&mut self, user_id: Option<String>, anonymous_id: String) {
+        if !crate::telemetry::analytics_event_construction_enabled() {
+            return;
+        }
         if get_current_time().date_naive() > self.last_synced_time.date_naive() {
             let daily_app_focus_duration_seconds =
                 json!(self.duration.num_milliseconds() as f64 / 1000.);

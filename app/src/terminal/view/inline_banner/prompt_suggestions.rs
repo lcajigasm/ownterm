@@ -144,6 +144,7 @@ fn render_button(
             | PromptAlertState::EnterpriseIndividualSpendLimitReached
             | PromptAlertState::EnterpriseWorkspaceSpendLimitReached
             | PromptAlertState::RequestLimitReached
+            | PromptAlertState::ConfigureLocalProvider
     ) && !force_enabled;
     let opacity: f32 = if is_button_disabled { 0.5 } else { 1.0 };
     let opacity_u8 = (opacity * 255.0).round() as u8;

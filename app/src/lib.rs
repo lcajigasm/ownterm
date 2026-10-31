@@ -2019,13 +2019,16 @@ pub(crate) fn initialize_app(
                 timer.mark_interval_end("FIRST_FRAME_DRAWN");
                 timer.compute_stats()
             });
-            let event = TelemetryEvent::AppStartup(AppStartupInfo {
-                is_session_restoration_on: user_defaults_on_startup.should_restore_session,
-                is_screen_reader_enabled,
-                from_relaunch,
-                is_crash_reporting_enabled,
-                timing_data,
-            });
+            if crate::channel::ChannelState::may_transmit_telemetry() {
+                let event = TelemetryEvent::AppStartup(AppStartupInfo {
+                    is_session_restoration_on: user_defaults_on_startup.should_restore_session,
+                    is_screen_reader_enabled,
+                    from_relaunch,
+                    is_crash_reporting_enabled,
+                    timing_data,
+                });
+                send_telemetry_from_app_ctx!(event, ctx);
+            }
 
             GPUState::handle(ctx).update(ctx, |gpu_state, ctx| {
                 gpu_state
@@ -2039,8 +2042,6 @@ pub(crate) fn initialize_app(
                         settings.refresh_preferred_graphics_backend_dropdown(ctx);
                     })
             }
-
-            send_telemetry_from_app_ctx!(event, ctx);
         });
 
         #[cfg(enable_crash_recovery)]

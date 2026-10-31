@@ -80,6 +80,10 @@ pub enum AcceptSlashCommandOrSavedPrompt {
     SavedPrompt {
         id: SyncId,
     },
+    /// A workflow loaded from the local config directory, not Warp Drive.
+    LocalWorkflow {
+        workflow: Box<crate::workflows::workflow::Workflow>,
+    },
     /// A skill selected from browse or search. Contains name (for display/insertion) and path/bundled_skill_id (for execution).
     Skill {
         reference: SkillReference,
@@ -407,6 +411,15 @@ impl Input {
                     model.set_mode(InputSuggestionsMode::Closed, ctx);
                 });
                 ctx.notify();
+            }
+            SlashCommandsEvent::SelectedLocalWorkflow { workflow } => {
+                self.show_workflows_info_box_on_workflow_selection(
+                    WorkflowType::Local(*workflow.clone()),
+                    WorkflowSource::Local,
+                    WorkflowSelectionSource::SlashMenu,
+                    None,
+                    ctx,
+                );
             }
             SlashCommandsEvent::SelectedSavedPrompt { id } => {
                 let Some(workflow) = CloudModel::as_ref(ctx).get_workflow(id).cloned() else {

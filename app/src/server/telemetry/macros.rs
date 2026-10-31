@@ -4,6 +4,7 @@
 #[macro_export]
 macro_rules! send_telemetry_sync_from_ctx {
     ($event:expr_2021, $ctx:expr_2021) => {
+        if $crate::channel::ChannelState::may_transmit_telemetry() {
         #[allow(unused_imports)]
         use warp_core::telemetry::TelemetryEvent as _;
         let event = $event;
@@ -30,6 +31,7 @@ macro_rules! send_telemetry_sync_from_ctx {
                 |_, _, _| {},
             );
         }
+        }
     };
 }
 
@@ -39,6 +41,7 @@ macro_rules! send_telemetry_sync_from_ctx {
 #[macro_export]
 macro_rules! send_telemetry_sync_from_app_ctx {
     ($event:expr_2021, $app_ctx:expr_2021) => {
+        if $crate::channel::ChannelState::may_transmit_telemetry() {
         #[allow(unused_imports)]
         use warp_core::telemetry::TelemetryEvent as _;
         if $event.enablement_state().is_enabled() {
@@ -64,6 +67,7 @@ macro_rules! send_telemetry_sync_from_app_ctx {
                 })
                 .detach();
         }
+        }
     };
 }
 
@@ -74,20 +78,22 @@ macro_rules! send_telemetry_sync_from_app_ctx {
 #[macro_export]
 macro_rules! send_telemetry_on_executor {
     ($auth_state: expr_2021, $event:expr_2021, $executor:expr_2021) => {
-        #[allow(unused_imports)]
-        use warp_core::telemetry::TelemetryEvent as _;
-        let event = $event;
-        if event.enablement_state().is_enabled() {
-            let user_id = $auth_state.user_id().map(|uid| uid.as_string());
-            let anonymous_id = $auth_state.anonymous_id();
-            warpui::record_telemetry_on_executor!(
-                user_id,
-                anonymous_id,
-                event.name().into(),
-                event.payload(),
-                event.contains_ugc(),
-                $executor
-            );
+        if $crate::channel::ChannelState::may_transmit_telemetry() {
+            #[allow(unused_imports)]
+            use warp_core::telemetry::TelemetryEvent as _;
+            let event = $event;
+            if event.enablement_state().is_enabled() {
+                let user_id = $auth_state.user_id().map(|uid| uid.as_string());
+                let anonymous_id = $auth_state.anonymous_id();
+                warpui::record_telemetry_on_executor!(
+                    user_id,
+                    anonymous_id,
+                    event.name().into(),
+                    event.payload(),
+                    event.contains_ugc(),
+                    $executor
+                );
+            }
         }
     };
 }

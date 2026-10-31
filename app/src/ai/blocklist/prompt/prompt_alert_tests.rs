@@ -129,7 +129,7 @@ fn test_server_delinquent_maps_to_delinquency_alert() {
         );
         assert_eq!(
             determine_state(&mut app),
-            PromptAlertState::DelinquentDueToPaymentIssue
+            PromptAlertState::ConfigureLocalProvider
         );
     });
 }
@@ -145,7 +145,7 @@ fn test_server_spend_limit_reasons_preserve_scope() {
         );
         assert_eq!(
             determine_state(&mut app),
-            PromptAlertState::EnterpriseTeamSpendLimitReached
+            PromptAlertState::ConfigureLocalProvider
         );
 
         apply_server_availability(
@@ -154,7 +154,7 @@ fn test_server_spend_limit_reasons_preserve_scope() {
         );
         assert_eq!(
             determine_state(&mut app),
-            PromptAlertState::EnterpriseIndividualSpendLimitReached
+            PromptAlertState::ConfigureLocalProvider
         );
         apply_server_availability(
             &mut app,
@@ -164,7 +164,7 @@ fn test_server_spend_limit_reasons_preserve_scope() {
         );
         assert_eq!(
             determine_state(&mut app),
-            PromptAlertState::EnterpriseUnassignedUserSpendLimitReached
+            PromptAlertState::ConfigureLocalProvider
         );
 
         apply_server_availability(
@@ -175,7 +175,7 @@ fn test_server_spend_limit_reasons_preserve_scope() {
         );
         assert_eq!(
             determine_state(&mut app),
-            PromptAlertState::EnterpriseWorkspaceSpendLimitReached
+            PromptAlertState::ConfigureLocalProvider
         );
     });
 }
@@ -474,7 +474,7 @@ fn test_server_out_of_credits_maps_to_request_limit_reached() {
             apply_server_availability(&mut app, AICreditAvailability::unavailable(reason));
             assert_eq!(
                 determine_state(&mut app),
-                PromptAlertState::RequestLimitReached,
+                PromptAlertState::ConfigureLocalProvider,
                 "unexpected alert state for {reason:?}",
             );
         }

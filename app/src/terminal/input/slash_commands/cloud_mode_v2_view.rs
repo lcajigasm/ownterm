@@ -121,7 +121,8 @@ impl Section {
         match action {
             AcceptSlashCommandOrSavedPrompt::SlashCommand { .. } => Self::Commands,
             AcceptSlashCommandOrSavedPrompt::Skill { .. } => Self::Skills,
-            AcceptSlashCommandOrSavedPrompt::SavedPrompt { .. } => Self::Prompts,
+            AcceptSlashCommandOrSavedPrompt::SavedPrompt { .. }
+            | AcceptSlashCommandOrSavedPrompt::LocalWorkflow { .. } => Self::Prompts,
         }
     }
 }
@@ -539,6 +540,11 @@ impl CloudModeV2SlashCommandView {
             }
             AcceptSlashCommandOrSavedPrompt::SavedPrompt { id } => {
                 ctx.emit(SlashCommandsEvent::SelectedSavedPrompt { id: *id });
+            }
+            AcceptSlashCommandOrSavedPrompt::LocalWorkflow { workflow } => {
+                ctx.emit(SlashCommandsEvent::SelectedLocalWorkflow {
+                    workflow: workflow.clone(),
+                });
             }
             AcceptSlashCommandOrSavedPrompt::Skill { name, reference } => {
                 ctx.emit(SlashCommandsEvent::SelectedSkill {

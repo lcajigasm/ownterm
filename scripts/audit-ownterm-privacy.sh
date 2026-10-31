@@ -39,6 +39,51 @@ require app/src/server/telemetry/collector.rs "may_transmit_telemetry()"
 require app/src/crash_reporting/mod.rs "is_crash_reporting_available()"
 require app/src/settings/ai.rs "Channel::Oss"
 require crates/warp_core/src/channel/state.rs "fn may_transmit_telemetry()"
+require crates/warp_core/src/telemetry.rs "may_transmit_telemetry()"
+require crates/warpui_core/src/telemetry/mod.rs "fn analytics_event_construction_enabled()"
+require crates/warpui_core/src/telemetry/mod.rs "AtomicBool::new(false)"
+require crates/warpui_core/src/telemetry/mod.rs "if !analytics_event_construction_enabled()"
+require app/src/server/telemetry/macros.rs "may_transmit_telemetry()"
+require app/src/lib.rs "may_transmit_telemetry()"
+require app/src/auth/auth_manager.rs "may_transmit_telemetry()"
+require app/src/autoupdate/mod.rs "may_transmit_telemetry()"
+require app/src/terminal/view.rs "may_transmit_telemetry()"
+
+python3 - <<'PY'
+from pathlib import Path
+import sys
+
+def fail(message):
+    print(f"privacy audit: {message}", file=sys.stderr)
+    sys.exit(1)
+
+for path in (
+    "crates/warp_core/src/telemetry.rs",
+    "app/src/server/telemetry/macros.rs",
+):
+    text = Path(path).read_text()
+    guard = text.find("may_transmit_telemetry()")
+    bind = text.find("let event = $event")
+    if guard < 0 or bind < 0 or bind < guard:
+        fail(f"{path} constructs a telemetry event before the transmit guard")
+
+hits = []
+root = Path(".")
+for path in root.rglob("*.rs"):
+    if any(part in {".git", "target"} for part in path.parts):
+        continue
+    text = path.read_text(errors="ignore")
+    if "set_analytics_event_construction_enabled_for_test" not in text:
+        continue
+    allowed = {
+        Path("crates/warpui_core/src/telemetry/mod.rs"),
+        Path("app/src/server/telemetry/mod_tests.rs"),
+    }
+    if path not in allowed:
+        hits.append(str(path))
+if hits:
+    fail("analytics event construction is enabled outside the persist test: " + ", ".join(hits))
+PY
 
 if grep -R -n --include='*.rs' -F "AIzaSyBdy3O3S9hrdayLJxJ7mriBR4qgUaUygAs" .; then
   fail "the Warp Firebase client key is embedded in Rust source"

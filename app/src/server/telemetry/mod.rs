@@ -219,14 +219,19 @@ impl TelemetryApi {
         event: impl warp_core::telemetry::TelemetryEvent,
         settings_snapshot: PrivacySettingsSnapshot,
     ) -> Result<()> {
-        let event = warpui::telemetry::create_event(
+        if !ChannelState::may_transmit_telemetry() {
+            return Ok(());
+        }
+        let Some(event) = warpui::telemetry::create_event(
             user_id.map(|uid| uid.as_string()),
             anonymous_id,
             event.name().into(),
             event.payload(),
             event.contains_ugc(),
             warpui::time::get_current_time(),
-        );
+        ) else {
+            return Ok(());
+        };
 
         self.send_telemetry_event_internal(event, settings_snapshot)
             .await

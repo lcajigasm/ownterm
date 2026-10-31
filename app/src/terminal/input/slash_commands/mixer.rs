@@ -4,6 +4,7 @@ use crate::search::SyncDataSource;
 use crate::search::data_source::{Query, QueryFilter};
 use crate::search::mixer::{AddAsyncSourceOptions, SearchMixer};
 use crate::terminal::input::slash_commands::AcceptSlashCommandOrSavedPrompt;
+use crate::terminal::input::slash_commands::data_source::LocalWorkflowSlashSource;
 
 pub type SlashCommandMixer = SearchMixer<AcceptSlashCommandOrSavedPrompt>;
 
@@ -35,6 +36,8 @@ where
         ctx,
     );
     mixer.add_sync_source(zero_state_source, [QueryFilter::StaticSlashCommands]);
+    let local_workflows = ctx.add_model(|_| LocalWorkflowSlashSource);
+    mixer.add_sync_source(local_workflows, [QueryFilter::StaticSlashCommands]);
     mixer.run_query(slash_command_query(""), ctx);
     mixer
 }

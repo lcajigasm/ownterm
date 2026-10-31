@@ -246,12 +246,14 @@ impl CommandSearchView {
                 );
             }
 
-            if WarpDriveSettings::is_warp_drive_enabled(ctx) {
-                mixer.add_sync_source(
-                    WorkflowsDataSource::new(session_context.as_ref(), ctx),
-                    HashSet::from([QueryFilter::Workflows]),
-                );
+            // Local workflows live in ~/.ownterm/workflows and the project directory.
+            // They do not need Warp Drive or a Warp server.
+            mixer.add_sync_source(
+                WorkflowsDataSource::new(session_context.as_ref(), ctx),
+                HashSet::from([QueryFilter::Workflows]),
+            );
 
+            if WarpDriveSettings::is_warp_drive_enabled(ctx) {
                 let mut workflows_filters = HashSet::from([QueryFilter::Workflows]);
                 if AISettings::as_ref(ctx).is_any_ai_enabled(ctx) {
                     workflows_filters.insert(QueryFilter::AgentModeWorkflows);

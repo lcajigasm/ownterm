@@ -857,6 +857,9 @@ test-util = [
     "warp_terminal/test-util",
     "ai/test-util",
     "warp_server_client/test-util",
+    # `warp_terminal/test-util` enables `Delegate::get_cursor_shape` on
+    # `warpui_core`. The impls are in `warpui` behind the same feature.
+    "warpui/test-util",
 ]
 terminal_lifecycle_recovery = []
 # Feature enabled only when app is compiled for integration tests.
