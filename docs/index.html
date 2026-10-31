@@ -636,7 +636,7 @@
   <main class="container">
     <section class="hero">
       <div class="pill-badge">
-        <span>✨ OwnTerm v0.1.0 Released</span>
+        <span>✨ OwnTerm releases on GitHub</span>
         <span>•</span>
         <span>100% Local-First &amp; Free</span>
       </div>
@@ -646,7 +646,7 @@
       </h1>
       <p>
         OwnTerm is a modern, GPU-accelerated terminal emulator and intelligent coding assistant.
-        No sign-ins, zero telemetry, and direct native tool calling using your own LLMs (Ollama, vLLM, LM Studio, OpenAI).
+        No sign-ins, zero telemetry upload, and direct tool calling with your own LLMs (Ollama, vLLM, LM Studio, OpenAI, xAI).
       </p>
 
       <div class="hero-actions">
@@ -656,7 +656,7 @@
             <polyline points="7 10 12 15 17 10"></polyline>
             <line x1="12" y1="15" x2="12" y2="3"></line>
           </svg>
-          Download v0.1.0
+          Download latest
         </a>
         <a href="https://github.com/lcajigasm/ownterm" target="_blank" class="btn-secondary">
           View Source on GitHub
@@ -725,7 +725,7 @@
           <div class="card-icon">🧠</div>
           <h3>Bring Your Own Model (BYOM)</h3>
           <p>
-            Connect directly to your local models running on Ollama, vLLM, LM Studio, or cloud providers like OpenAI, OpenRouter, and Groq.
+            Connect directly to Ollama, vLLM, LM Studio, OpenAI, xAI, OpenRouter, or Groq. Set <code>OWNTERM_PROVIDER</code> and <code>OWNTERM_MODEL</code>. No Warp account.
           </p>
         </div>
 
@@ -774,7 +774,7 @@
         <button class="tab-btn active" onclick="switchTab('tab-ollama', this)">Ollama</button>
         <button class="tab-btn" onclick="switchTab('tab-vllm', this)">vLLM</button>
         <button class="tab-btn" onclick="switchTab('tab-lmstudio', this)">LM Studio</button>
-        <button class="tab-btn" onclick="switchTab('tab-cloud', this)">Cloud (OpenRouter / OpenAI)</button>
+        <button class="tab-btn" onclick="switchTab('tab-cloud', this)">Cloud (xAI / OpenAI)</button>
         <button class="tab-btn" onclick="switchTab('tab-tui', this)">Headless TUI</button>
       </div>
 
@@ -786,7 +786,7 @@
 ollama run llama3.3
 
 <span class="comment"># 2. Launch OwnTerm with direct local loopback inference</span>
-<span class="keyword">export</span> OWNTERM_BASE_URL=<span class="string">"http://localhost:11434/v1"</span>
+<span class="keyword">export</span> OWNTERM_PROVIDER=<span class="string">"ollama"</span>
 <span class="keyword">export</span> OWNTERM_MODEL=<span class="string">"llama3.3"</span>
 
 ./script/run</code></pre>
@@ -825,10 +825,10 @@ vllm serve Qwen/Qwen2.5-Coder-7B-Instruct --port 8000
       <div id="tab-cloud" class="tab-pane">
         <div class="code-container">
           <button class="copy-btn" onclick="copySnippet('cloud-snippet')">Copy</button>
-          <pre><code id="cloud-snippet"><span class="comment"># Using OpenRouter, OpenAI, or Groq (keys stored in OS Keyring)</span>
-<span class="keyword">export</span> OWNTERM_BASE_URL=<span class="string">"https://openrouter.ai/api/v1"</span>
-<span class="keyword">export</span> OWNTERM_MODEL=<span class="string">"anthropic/claude-3.5-sonnet"</span>
-<span class="keyword">export</span> OWNTERM_API_KEY=<span class="string">"sk-or-v1-..."</span>
+          <pre><code id="cloud-snippet"><span class="comment"># xAI, OpenAI, OpenRouter, or Groq. The key stays in the environment.</span>
+<span class="keyword">export</span> OWNTERM_PROVIDER=<span class="string">"xai"</span>
+<span class="keyword">export</span> OWNTERM_MODEL=<span class="string">"grok-3"</span>
+<span class="keyword">export</span> OWNTERM_API_KEY=<span class="string">"xai-..."</span>
 
 ./script/run</code></pre>
         </div>
@@ -859,33 +859,33 @@ ownterm-tui</code></pre>
           <div class="dl-os-icon">🍎</div>
           <h4>macOS (Apple Silicon)</h4>
           <div class="arch">ARM64 (M1 / M2 / M3 / M4)</div>
-          <a href="https://github.com/lcajigasm/ownterm/releases/download/v0.1.0/ownterm-macos-arm64.tar.gz" class="btn-dl">Download .tar.gz</a>
+          <a href="https://github.com/lcajigasm/ownterm/releases/latest/download/ownterm-macos-arm64.tar.gz" class="btn-dl">Download .tar.gz</a>
         </div>
 
         <div class="dl-card">
           <div class="dl-os-icon">🍏</div>
           <h4>macOS (Intel)</h4>
           <div class="arch">x86_64</div>
-          <a href="https://github.com/lcajigasm/ownterm/releases/download/v0.1.0/ownterm-macos-x86_64.tar.gz" class="btn-dl">Download .tar.gz</a>
+          <a href="https://github.com/lcajigasm/ownterm/releases/latest/download/ownterm-macos-x86_64.tar.gz" class="btn-dl">Download .tar.gz</a>
         </div>
 
         <div class="dl-card">
           <div class="dl-os-icon">🐧</div>
           <h4>Linux</h4>
           <div class="arch">x86_64 (glibc 2.31+)</div>
-          <a href="https://github.com/lcajigasm/ownterm/releases/download/v0.1.0/ownterm-linux-x86_64.tar.gz" class="btn-dl">Download .tar.gz</a>
+          <a href="https://github.com/lcajigasm/ownterm/releases/latest/download/ownterm-linux-x86_64.tar.gz" class="btn-dl">Download .tar.gz</a>
         </div>
 
         <div class="dl-card">
           <div class="dl-os-icon">🪟</div>
           <h4>Windows</h4>
           <div class="arch">x86_64 (Windows 10 / 11)</div>
-          <a href="https://github.com/lcajigasm/ownterm/releases/download/v0.1.0/ownterm-windows-x86_64.tar.gz" class="btn-dl">Download .tar.gz</a>
+          <a href="https://github.com/lcajigasm/ownterm/releases/latest/download/ownterm-windows-x86_64.tar.gz" class="btn-dl">Download .tar.gz</a>
         </div>
       </div>
 
       <div style="text-align: center; margin-top: 24px;">
-        <a href="https://github.com/lcajigasm/ownterm/releases/tag/v0.1.0" target="_blank" style="color: var(--primary); font-size: 0.95rem; text-decoration: none; font-weight: 500;">
+        <a href="https://github.com/lcajigasm/ownterm/releases/latest" target="_blank" style="color: var(--primary); font-size: 0.95rem; text-decoration: none; font-weight: 500;">
           View all release assets and SHA256SUMS &rarr;
         </a>
       </div>
@@ -1006,7 +1006,7 @@ ownterm-tui</code></pre>
         <div class="footer-links">
           <a href="https://github.com/lcajigasm/ownterm">GitHub</a>
           <a href="https://github.com/lcajigasm/ownterm/releases">Releases</a>
-          <a href="https://github.com/lcajigasm/ownterm/blob/master/TODO.md">Roadmap</a>
+          <a href="ROADMAP.md">Roadmap</a>
           <a href="https://github.com/lcajigasm/ownterm/blob/master/docs/ARCHITECTURE.md">Architecture</a>
           <a href="https://github.com/lcajigasm/ownterm/blob/master/LICENSE-AGPL">License</a>
         </div>

@@ -9,7 +9,7 @@ use warp_core::channel::{Channel, ChannelState};
 fn main() -> Result<()> {
     ChannelState::set(ChannelState::new(
         Channel::Stable,
-        warp_channel_config::load_config!("stable"),
+        warp_channel_config::load_config!("stable").without_warp_services(),
     ));
 
     warp::run()

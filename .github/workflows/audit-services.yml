@@ -3,26 +3,17 @@ name: Audit Warp Services Coupling
 on:
   push:
     branches:
-      - main
       - master
   pull_request:
   workflow_dispatch:
 
 jobs:
   audit:
-    name: Run Warp Services Audit
+    name: OwnTerm privacy audit
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install ripgrep
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ripgrep
-
-      - name: Run audit script
-        shell: bash
-        run: |
-          chmod +x scripts/audit-warp-services.sh
-          ./scripts/audit-warp-services.sh . || true
+      - name: Run privacy audit
+        run: bash scripts/audit-ownterm-privacy.sh

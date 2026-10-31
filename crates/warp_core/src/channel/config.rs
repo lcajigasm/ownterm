@@ -56,6 +56,19 @@ pub struct WarpServerConfig {
     pub iap_config: Option<IapConfig>,
 }
 
+impl ChannelConfig {
+    /// Drops Warp cloud, telemetry, crash upload, and autoupdate endpoints.
+    pub fn without_warp_services(mut self) -> Self {
+        self.server_config = WarpServerConfig::disabled();
+        self.oz_config = OzConfig::disabled();
+        self.telemetry_config = None;
+        self.crash_reporting_config = None;
+        self.autoupdate_config = None;
+        self.mcp_static_config = None;
+        self
+    }
+}
+
 impl WarpServerConfig {
     pub fn disabled() -> Self {
         Self {
@@ -74,7 +87,8 @@ impl WarpServerConfig {
             prewarmed_sandbox_control_url: None,
             rtc_server_url: "wss://rtc.app.warp.dev/graphql/v2".into(),
             session_sharing_server_url: Some("wss://sessions.app.warp.dev".into()),
-            firebase_auth_api_key: "AIzaSyBdy3O3S9hrdayLJxJ7mriBR4qgUaUygAs".into(),
+            // OwnTerm does not embed Warp Firebase client credentials.
+            firebase_auth_api_key: "".into(),
             iap_config: None,
         }
     }

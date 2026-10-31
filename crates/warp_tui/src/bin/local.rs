@@ -12,11 +12,14 @@ use warp_core::features;
 
 fn main() -> Result<()> {
     ChannelState::set(
-        ChannelState::new(Channel::Local, warp_channel_config::load_config!("local"))
-            .with_additional_features(features::DEBUG_FLAGS)
-            .with_additional_features(features::DOGFOOD_FLAGS)
-            .with_additional_features(features::PREVIEW_FLAGS)
-            .with_additional_features(features::LOCAL_FLAGS),
+        ChannelState::new(
+            Channel::Local,
+            warp_channel_config::load_config!("local").without_warp_services(),
+        )
+        .with_additional_features(features::DEBUG_FLAGS)
+        .with_additional_features(features::DOGFOOD_FLAGS)
+        .with_additional_features(features::PREVIEW_FLAGS)
+        .with_additional_features(features::LOCAL_FLAGS),
     );
 
     warp_tui::run()

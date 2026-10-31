@@ -3250,8 +3250,10 @@ fn render_global_ai_toggle(
         );
     }
 
-    // Show sign-up button for anonymous users, toggle for logged-in users
-    if is_anonymous {
+    // Warp requires an account before AI can be toggled. OwnTerm does not.
+    let requires_warp_account =
+        is_anonymous && ChannelState::channel() != warp_core::channel::Channel::Oss;
+    if requires_warp_account {
         row.add_child(
             Flex::row()
                 .with_cross_axis_alignment(CrossAxisAlignment::Center)
@@ -6047,7 +6049,10 @@ impl SettingsWidget for ApiKeysWidget {
         }
 
         // Warp credit fallback applies to member-provided API keys, not custom endpoints.
-        if is_byo_enabled && show_provider_keys {
+        if is_byo_enabled
+            && show_provider_keys
+            && ChannelState::channel() != warp_core::channel::Channel::Oss
+        {
             column.add_child(
                 Container::new(self.render_warp_credit_fallback_toggle(view, app))
                     .with_margin_top(16.)

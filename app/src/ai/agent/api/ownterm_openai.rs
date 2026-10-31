@@ -314,22 +314,13 @@ impl OpenAiCompatibleConfig {
     }
 
     fn from_environment() -> anyhow::Result<Option<Self>> {
-        let base_url = std::env::var("OWNTERM_BASE_URL").ok();
-        let model = std::env::var("OWNTERM_MODEL").ok();
-        if base_url.is_none() && model.is_none() {
+        let Some(resolved) = ownterm_provider::resolve_from_process_env()? else {
             return Ok(None);
-        }
-        let base_url =
-            base_url.context("OWNTERM_BASE_URL is required when OWNTERM_MODEL is set")?;
-        let model = model
-            .filter(|value| !value.trim().is_empty())
-            .context("OWNTERM_MODEL must not be empty")?;
+        };
         Ok(Some(Self {
-            endpoint: chat_completions_url(&base_url)?,
-            model,
-            api_key: std::env::var("OWNTERM_API_KEY")
-                .ok()
-                .filter(|value| !value.trim().is_empty()),
+            endpoint: resolved.endpoint,
+            model: resolved.model,
+            api_key: resolved.api_key,
         }))
     }
 
@@ -434,27 +425,7 @@ fn resolve_system_prompt() -> Option<String> {
 }
 
 fn chat_completions_url(base_url: &str) -> anyhow::Result<Url> {
-    let mut url = Url::parse(base_url).context("invalid OpenAI-compatible base URL")?;
-    let is_loopback = url.host_str().is_some_and(|host| {
-        host.eq_ignore_ascii_case("localhost")
-            || host
-                .parse::<std::net::IpAddr>()
-                .is_ok_and(|address| address.is_loopback())
-    });
-    if url.scheme() != "https" && !(url.scheme() == "http" && is_loopback) {
-        return Err(anyhow!(
-            "OwnTerm model endpoints must use HTTPS; HTTP is allowed only for loopback hosts"
-        ));
-    }
-    if !url
-        .path()
-        .trim_end_matches('/')
-        .ends_with("/chat/completions")
-    {
-        let path = format!("{}/chat/completions", url.path().trim_end_matches('/'));
-        url.set_path(&path);
-    }
-    Ok(url)
+    ownterm_provider::chat_completions_url(base_url)
 }
 
 fn parse_streaming_chunk(data: &str) -> anyhow::Result<Option<ParsedChunk>> {

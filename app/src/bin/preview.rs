@@ -11,10 +11,9 @@ fn main() -> Result<()> {
     ChannelState::set(
         ChannelState::new(
             Channel::Preview,
-            warp_channel_config::load_config!("preview"),
+            warp_channel_config::load_config!("preview").without_warp_services(),
         )
-        .with_additional_features(features::PREVIEW_FLAGS)
-        .with_additional_features(&[features::FeatureFlag::ForceLogin]),
+        .with_additional_features(features::PREVIEW_FLAGS),
     );
 
     warp::run()

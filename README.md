@@ -48,7 +48,7 @@ Visit the official website for interactive demos, feature overviews, and release
 
 Modern terminals need more than classic 80x24 character grids — they need block-based navigation, searchable history, rich completions, and contextual AI assistance. However, proprietary alternatives lock these features behind **mandatory accounts, telemetry tracking, cloud drives, and paid subscriptions**.
 
-**OwnTerm** is an open-source, local-first fork derived from the [Warp client](https://github.com/warpdotdev/warp). It completely severs all ties to proprietary cloud infrastructure, removes remote billing and analytics, and routes all AI agent queries directly to **your chosen local or remote LLM endpoints**.
+**OwnTerm** is an open-source, local-first fork of the Warp client published by Warp Services, Inc. The terminal core remains under the upstream AGPL-3.0 and MIT licenses; see [Licensing and Trademarks](#licensing-and-trademarks). OwnTerm is not affiliated with Warp. The `ownterm` binary does not require a Warp account, does not upload telemetry or crash reports, and sends agent requests only to the OpenAI-compatible endpoint you configure.
 
 ### Core Principles
 
@@ -74,22 +74,45 @@ Modern terminals need more than classic 80x24 character grids — they need bloc
 
 ## Downloads & Installation
 
-Precompiled release bundles for **v0.1.0** are available on GitHub Releases:
+Precompiled archives are attached to [GitHub Releases](https://github.com/lcajigasm/ownterm/releases/latest). Each archive contains `ownterm` and `ownterm-tui`.
 
 | Platform | Architecture | Package |
 | :--- | :--- | :--- |
-| **macOS** | Apple Silicon (M1/M2/M3/M4) | [ownterm-macos-arm64.tar.gz](https://github.com/lcajigasm/ownterm/releases/download/v0.1.0/ownterm-macos-arm64.tar.gz) |
-| **macOS** | Intel (x86_64) | [ownterm-macos-x86_64.tar.gz](https://github.com/lcajigasm/ownterm/releases/download/v0.1.0/ownterm-macos-x86_64.tar.gz) |
-| **Linux** | x86_64 (glibc 2.31+) | [ownterm-linux-x86_64.tar.gz](https://github.com/lcajigasm/ownterm/releases/download/v0.1.0/ownterm-linux-x86_64.tar.gz) |
-| **Windows**| x86_64 (Win 10/11) | [ownterm-windows-x86_64.tar.gz](https://github.com/lcajigasm/ownterm/releases/download/v0.1.0/ownterm-windows-x86_64.tar.gz) |
+| **macOS** | Apple Silicon (M1/M2/M3/M4) | [ownterm-macos-arm64.tar.gz](https://github.com/lcajigasm/ownterm/releases/latest/download/ownterm-macos-arm64.tar.gz) |
+| **macOS** | Intel (x86_64) | [ownterm-macos-x86_64.tar.gz](https://github.com/lcajigasm/ownterm/releases/latest/download/ownterm-macos-x86_64.tar.gz) |
+| **Linux** | x86_64 (glibc 2.31+) | [ownterm-linux-x86_64.tar.gz](https://github.com/lcajigasm/ownterm/releases/latest/download/ownterm-linux-x86_64.tar.gz) |
+| **Windows**| x86_64 (Win 10/11) | [ownterm-windows-x86_64.tar.gz](https://github.com/lcajigasm/ownterm/releases/latest/download/ownterm-windows-x86_64.tar.gz) |
 
-You can verify package integrity with [SHA256SUMS](https://github.com/lcajigasm/ownterm/releases/download/v0.1.0/SHA256SUMS).
+Verify a download with the `SHA256SUMS` file on that release. A tag `vX.Y.Z` builds these archives; pushing to `master` does not.
 
 ---
 
 ## Bring Your Own Model (BYOM)
 
-OwnTerm connects to any inference engine that exposes an OpenAI-compatible `/chat/completions` endpoint. You can configure endpoints via **Environment Variables** or directly in the **Settings GUI** (`Settings -> AI / Provider`).
+OwnTerm connects to any inference engine that exposes an OpenAI-compatible `/chat/completions` endpoint. Named presets live in `crates/ownterm_provider`.
+
+| `OWNTERM_PROVIDER` | Default base URL | API key |
+| :--- | :--- | :--- |
+| `ollama` | `http://127.0.0.1:11434/v1` | not required |
+| `lmstudio` | `http://127.0.0.1:1234/v1` | not required |
+| `vllm` | `http://127.0.0.1:8000/v1` | not required |
+| `localai` | `http://127.0.0.1:8080/v1` | not required |
+| `openai` | `https://api.openai.com/v1` | `OWNTERM_API_KEY` |
+| `xai` | `https://api.x.ai/v1` | `OWNTERM_API_KEY` |
+| `openrouter` | `https://openrouter.ai/api/v1` | `OWNTERM_API_KEY` |
+| `groq` | `https://api.groq.com/openai/v1` | `OWNTERM_API_KEY` |
+| `compatible` | set `OWNTERM_BASE_URL` | optional |
+
+`OWNTERM_MODEL` is always required. `OWNTERM_BASE_URL` overrides the preset. HTTP is accepted only for `localhost` and loopback addresses.
+
+You can also put non-secret fields in `~/.ownterm/provider.env` (or `OWNTERM_PROVIDER_FILE`). Environment variables win. The file is rejected if it contains `api_key`, `token`, or `secret`.
+
+```
+provider=xai
+model=grok-3
+```
+
+When a provider is configured this way, OwnTerm does not apply Warp credit or signup gates to the agent request. Keys typed into Settings still go to the OS keychain.
 
 ### 1. Local Models with Ollama
 
@@ -100,7 +123,7 @@ Run completely private, local models with zero internet access:
 ollama run llama3.3
 
 # 2. Start OwnTerm pointing to Ollama
-export OWNTERM_BASE_URL="http://localhost:11434/v1"
+export OWNTERM_PROVIDER="ollama"
 export OWNTERM_MODEL="llama3.3"
 ./script/run
 ```
@@ -246,40 +269,30 @@ WARP_LOCAL_SKIP_METAL=1 cargo test -p warp --lib ownterm
 
 OwnTerm includes full automated continuous delivery for versioning, building, and publishing multi-platform releases.
 
-### 1. Automated Release Pipeline on Master
+### 1. Pull request CI
 
-Every push to the `master` branch triggers the unified [`.github/workflows/ci.yml`](.github/workflows/ci.yml) workflow:
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on pull requests and on `master`. It audits the privacy gates, formats and lints `ownterm_provider`, and tests that crate plus the channel-config unit tests. It does not publish a release.
 
-1. **Automatic Version Tagging**: Automatically queries the latest release tag (e.g. `v0.1.0`), increments the patch version (`v0.1.1`), tags the commit, and pushes the new tag to origin.
-2. **Cross-Compilation Matrix**:
-   - macOS Apple Silicon (`aarch64-apple-darwin` on `macos-14`)
-   - macOS Intel (`x86_64-apple-darwin` on `macos-14` cross-compilation)
-   - Linux (`x86_64-unknown-linux-gnu` on `ubuntu-22.04`)
-   - Windows (`x86_64-pc-windows-msvc` on `windows-latest`)
-3. **Builds GUI & TUI**:
-   - `ownterm` (GPU desktop application)
-   - `ownterm-tui` (headless console binary)
-4. **Packaging & Checksums**:
-   - Compresses release archives (`.tar.gz`) for every operating system
-   - Generates consolidated `SHA256SUMS` for integrity verification
-5. **GitHub Releases Deployment**:
-   - Publishes an official GitHub Release under the incremented tag with all platform packages attached and ready for download.
+### 2. Tagged release binaries
 
-*(Releases can also be triggered manually via GitHub Actions with a custom tag via the **Actions -> OwnTerm CI & Release -> Run workflow** button.)*
+Pushing a tag `vX.Y.Z` runs [`.github/workflows/release.yml`](.github/workflows/release.yml), which builds `ownterm` and `ownterm-tui` for:
 
-### 2. Manual Version Bump Script
+- macOS Apple Silicon (`aarch64-apple-darwin` on `macos-14`)
+- macOS Intel (`x86_64-apple-darwin` on `macos-14`)
+- Linux (`x86_64-unknown-linux-gnu` on `ubuntu-22.04`)
+- Windows (`x86_64-pc-windows-msvc` on `windows-latest`)
 
-To manually bump versions across manifests (`app/Cargo.toml`, Windows installers, and documentation) prior to committing, use:
+The workflow attaches the `.tar.gz` archives and `SHA256SUMS` to that tag. It does not create or force-push tags.
+
+### 3. Manual version bump
+
+`./script/bump-version.sh` updates manifests. Create and push the tag yourself; pushing `master` does not publish binaries.
 
 ```bash
-# Bump version and inspect changes
-./script/bump-version.sh 0.1.1
-
-# Bump version, commit changes, and create the git tag
-./script/bump-version.sh 0.1.1 --tag
-
-# Push to master to trigger the automated CI/CD deployment
+./script/bump-version.sh 0.1.2
+git tag v0.1.2
 git push origin master
+git push origin v0.1.2
 ```
 
 ---
@@ -294,5 +307,5 @@ git push origin master
 ## Licensing and Trademarks
 
 - **Code Licensing**: The main terminal client is licensed under the **GNU Affero General Public License v3.0** ([`LICENSE-AGPL`](LICENSE-AGPL)). Shared UI framework crates (`warpui`, `warpui_core`) retain the **MIT License** ([`LICENSE-MIT`](LICENSE-MIT)).
-- **Attribution**: Derived from the open-source client of Warp (© 2026 Warp Services, Inc.).
+- **Attribution**: Fork of the Warp client (© Warp Services, Inc.). Original copyright and license notices stay in the tree. OwnTerm does not claim ownership of the upstream work.
 - **Trademarks & Non-Affiliation**: OwnTerm is an independent open-source project and is not affiliated with, sponsored by, or endorsed by Warp Services, Inc. "Warp" is a trademark of Warp Services, Inc.
