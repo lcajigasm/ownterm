@@ -3304,6 +3304,32 @@ fn render_global_ai_toggle(
                 .finish(),
         );
     } else {
+        if ChannelState::channel() == warp_core::channel::Channel::Oss
+            && !crate::ai::request_usage_model::oss_direct_provider_ready(app)
+        {
+            row.add_child(
+                Container::new(
+                    ConstrainedBox::new(
+                        Text::new_inline(
+                            "No AI provider configured. Set OWNTERM_PROVIDER and OWNTERM_MODEL, or add a custom endpoint on this page.",
+                            appearance.ui_font_family(),
+                            14.,
+                        )
+                        .with_color(
+                            appearance
+                                .theme()
+                                .sub_text_color(appearance.theme().surface_2())
+                                .into_solid(),
+                        )
+                        .finish(),
+                    )
+                    .with_max_width(420.)
+                    .finish(),
+                )
+                .with_margin_right(16.)
+                .finish(),
+            );
+        }
         row.add_child(
             Container::new(
                 ui_builder

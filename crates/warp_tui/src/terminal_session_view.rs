@@ -4285,6 +4285,11 @@ impl TuiTerminalSessionView {
                 };
                 self.select_tui_slash_command(command, ctx);
             }
+            AcceptSlashCommandOrSavedPrompt::LocalWorkflow { workflow } => {
+                self.input_view.update(ctx, |input, ctx| {
+                    input.set_text(workflow.content(), ctx);
+                });
+            }
             AcceptSlashCommandOrSavedPrompt::SavedPrompt { id } => {
                 let Some(prompt) = saved_prompt_text_for_id(id, ctx) else {
                     log::warn!("Tried to insert saved prompt for id {id:?} but it does not exist");

@@ -10,9 +10,12 @@ use warpui::{
     WeakViewHandle,
 };
 
+use warp_core::channel::{Channel, ChannelState};
+
 use crate::ai::AIRequestUsageModel;
 use crate::ai::blocklist::error_color;
 use crate::ai::credit_availability::{AICreditAvailability, AICreditDenialReason};
+use crate::ai::request_usage_model::oss_direct_provider_ready;
 use crate::auth::AuthStateProvider;
 use crate::network::NetworkStatus;
 use crate::server::ids::ServerId;
@@ -38,6 +41,8 @@ const UNASSIGNED_USER_SPEND_LIMIT_PRIMARY_TEXT: &str =
 const WORKSPACE_SPEND_LIMIT_PRIMARY_TEXT: &str = "You've reached this workspace's spend limit";
 
 const ANONYMOUS_USER_REQUEST_LIMIT_ACTION_TEXT: &str = "Sign up for more AI credits";
+const CONFIGURE_LOCAL_PROVIDER_PRIMARY_TEXT: &str = "No AI provider";
+const CONFIGURE_LOCAL_PROVIDER_ACTION_TEXT: &str = "Configure a local provider";
 const DELINQUENT_DUE_TO_PAYMENT_ISSUE_ACTION_TEXT: &str = "Manage billing";
 const OVERAGES_TOGGLEABLE_BUT_NOT_ENABLED_ACTION_TEXT: &str = "Enable premium overages";
 const MONTHLY_OVERAGES_SPEND_LIMIT_REACHED_ACTION_TEXT: &str = "Increase monthly spend limit";
@@ -94,6 +99,7 @@ fn enterprise_limit_cta(
         | PromptAlertState::OveragesToggleableButNotEnabled
         | PromptAlertState::MonthlyOveragesSpendLimitReached
         | PromptAlertState::RequestLimitReached
+        | PromptAlertState::ConfigureLocalProvider
         | PromptAlertState::NoAlert => return None,
     };
     let has_joinable_team = can_join_team
@@ -158,6 +164,8 @@ pub enum PromptAlertState {
     EnterpriseWorkspaceSpendLimitReached,
     /// The user has reached the request limit.
     RequestLimitReached,
+    /// OwnTerm has no Warp account or credits. The chip points at local provider setup.
+    ConfigureLocalProvider,
     /// No alert should be displayed.
     NoAlert,
 }
@@ -183,8 +191,25 @@ impl PromptAlertState {
                 UNASSIGNED_USER_SPEND_LIMIT_PRIMARY_TEXT
             }
             Self::EnterpriseWorkspaceSpendLimitReached => WORKSPACE_SPEND_LIMIT_PRIMARY_TEXT,
+            Self::ConfigureLocalProvider => CONFIGURE_LOCAL_PROVIDER_PRIMARY_TEXT,
             Self::NoAlert => "",
         }
+    }
+
+    fn asks_for_warp_account_or_credits(&self) -> bool {
+        matches!(
+            self,
+            Self::AnonymousUserRequestLimitSoftGate
+                | Self::AnonymousUserRequestLimitHardGate
+                | Self::DelinquentDueToPaymentIssue
+                | Self::OveragesToggleableButNotEnabled
+                | Self::MonthlyOveragesSpendLimitReached
+                | Self::EnterpriseTeamSpendLimitReached
+                | Self::EnterpriseIndividualSpendLimitReached
+                | Self::EnterpriseUnassignedUserSpendLimitReached
+                | Self::EnterpriseWorkspaceSpendLimitReached
+                | Self::RequestLimitReached
+        )
     }
 
     pub(crate) fn tooltip_text(&self) -> Option<&'static str> {
@@ -199,6 +224,9 @@ impl PromptAlertState {
             | Self::EnterpriseUnassignedUserSpendLimitReached
             | Self::EnterpriseWorkspaceSpendLimitReached
             | Self::RequestLimitReached => Some(self.primary_text()),
+            Self::ConfigureLocalProvider => Some(
+                "Set OWNTERM_PROVIDER and OWNTERM_MODEL, or add a custom endpoint in AI settings.",
+            ),
             Self::NoConnection | Self::NoAlert => None,
         }
     }
@@ -255,7 +283,21 @@ impl PromptAlertView {
     }
 
     pub fn determine_state<S: TeamScope + ?Sized>(scope: &S, app: &AppContext) -> PromptAlertState {
-        if crate::ai::request_usage_model::oss_direct_provider_ready(app) {
+        let state = Self::determine_warp_credit_state(scope, app);
+        if ChannelState::channel() == Channel::Oss
+            && !oss_direct_provider_ready(app)
+            && state.asks_for_warp_account_or_credits()
+        {
+            return PromptAlertState::ConfigureLocalProvider;
+        }
+        state
+    }
+
+    fn determine_warp_credit_state<S: TeamScope + ?Sized>(
+        scope: &S,
+        app: &AppContext,
+    ) -> PromptAlertState {
+        if oss_direct_provider_ready(app) {
             return PromptAlertState::NoAlert;
         }
 
@@ -483,6 +525,16 @@ impl PromptAlertView {
                     text_fragments.extend(cta);
                 }
             }
+            PromptAlertState::ConfigureLocalProvider => {
+                text_fragments.push(FormattedTextFragment::plain_text("  "));
+                text_fragments.push(FormattedTextFragment::hyperlink_action(
+                    CONFIGURE_LOCAL_PROVIDER_ACTION_TEXT,
+                    WorkspaceAction::ShowSettingsPageWithSearch {
+                        search_query: "endpoint".to_string(),
+                        section: Some(SettingsSection::WarpAgent),
+                    },
+                ));
+            }
             PromptAlertState::RequestLimitReached => {
                 if let Some(team) = current_team {
                     text_fragments.push(FormattedTextFragment::plain_text("  "));
@@ -539,6 +591,7 @@ impl PromptAlertView {
 fn does_alert_block_ai_requests(state: &PromptAlertState) -> bool {
     match state {
         PromptAlertState::AnonymousUserRequestLimitSoftGate | PromptAlertState::NoAlert => false,
+        PromptAlertState::ConfigureLocalProvider => true,
         PromptAlertState::NoConnection
         | PromptAlertState::AnonymousUserRequestLimitHardGate
         | PromptAlertState::DelinquentDueToPaymentIssue

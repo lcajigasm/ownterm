@@ -112,7 +112,9 @@ provider=xai
 model=grok-3
 ```
 
-When a provider is configured this way, OwnTerm does not apply Warp credit or signup gates to the agent request. Keys typed into Settings still go to the OS keychain.
+When a provider is configured this way, OwnTerm does not apply Warp credit or signup gates to the agent request. Keys typed into Settings still go to the OS keychain. With no provider, the prompt shows "No AI provider" and opens AI settings instead of a signup or credit warning.
+
+Workflows in `~/.ownterm/workflows` appear in command search and the `/` menu without Warp Drive. Shell completions and command-palette file search stay on this machine.
 
 ### 1. Local Models with Ollama
 
@@ -286,13 +288,12 @@ The workflow attaches the `.tar.gz` archives and `SHA256SUMS` to that tag. It do
 
 ### 3. Manual version bump
 
-`./script/bump-version.sh` updates manifests. Create and push the tag yourself; pushing `master` does not publish binaries.
+`./script/bump-version.sh` updates manifests. Land that change with a squash-merged pull request, then push the tag yourself. Pushing `master` does not publish binaries.
 
 ```bash
-./script/bump-version.sh 0.1.2
-git tag v0.1.2
-git push origin master
-git push origin v0.1.2
+./script/bump-version.sh 0.2.0
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 ---

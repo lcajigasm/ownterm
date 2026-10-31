@@ -11,6 +11,7 @@ fn test_persist_events_doesnt_include_ugc_events() {
     VirtualFS::test(
         "test_persist_events_doesnt_include_ugc_events",
         |dirs, _sandbox| {
+            warpui::telemetry::set_analytics_event_construction_enabled_for_test(true);
             // Add one event without UGC
             let user_id = Some("user".into());
             let anonymous_id = "anonymous_id".to_owned();
@@ -47,6 +48,7 @@ fn test_persist_events_doesnt_include_ugc_events() {
 
             let track = file_content[0].unwrap_track();
             assert_eq!(track.event, "non UGC event name");
+            warpui::telemetry::set_analytics_event_construction_enabled_for_test(false);
         },
     );
 }

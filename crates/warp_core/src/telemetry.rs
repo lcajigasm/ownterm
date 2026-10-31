@@ -146,6 +146,7 @@ pub fn all_events() -> impl Iterator<Item = Box<dyn TelemetryEventDesc>> {
 #[macro_export]
 macro_rules! send_telemetry_from_ctx {
     ($event:expr, $ctx:expr) => {
+        if $crate::channel::ChannelState::may_transmit_telemetry() {
         #[allow(unused_imports)]
         use warp_core::telemetry::TelemetryEvent as _;
         let event = $event;
@@ -164,6 +165,7 @@ macro_rules! send_telemetry_from_ctx {
                 $ctx
             );
         }
+        }
     };
 }
 
@@ -175,6 +177,7 @@ macro_rules! send_telemetry_from_ctx {
 #[macro_export]
 macro_rules! send_telemetry_from_app_ctx {
     ($event:expr, $app_ctx:expr) => {
+        if $crate::channel::ChannelState::may_transmit_telemetry() {
         let event = $event;
         if event.enablement_state().is_enabled() {
             let auth_state =
@@ -192,6 +195,7 @@ macro_rules! send_telemetry_from_app_ctx {
                 event.contains_ugc(),
                 $app_ctx.background_executor()
             );
+        }
         }
     };
 }

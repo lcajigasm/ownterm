@@ -52,6 +52,7 @@ const OWNTERM_OSS_ENABLED_FEATURES: &[FeatureFlag] = &[
     FeatureFlag::AgentMode,
     FeatureFlag::APIKeyManagement,
     FeatureFlag::SoloUserByok,
+    FeatureFlag::CommandPaletteFileSearch,
 ];
 
 /// Mark all features which should be enabled on the current channel as enabled.

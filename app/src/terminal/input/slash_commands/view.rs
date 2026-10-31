@@ -39,6 +39,9 @@ pub enum SlashCommandsEvent {
     SelectedSavedPrompt {
         id: SyncId,
     },
+    SelectedLocalWorkflow {
+        workflow: Box<crate::workflows::workflow::Workflow>,
+    },
     /// `cmd_or_ctrl_enter` is true if accepted via Cmd/Ctrl+Enter (vs Enter/click).
     SelectedStaticCommand {
         id: SlashCommandId,
@@ -198,6 +201,11 @@ impl InlineSlashCommandView {
             }
             AcceptSlashCommandOrSavedPrompt::SavedPrompt { id } => {
                 ctx.emit(SlashCommandsEvent::SelectedSavedPrompt { id: *id });
+            }
+            AcceptSlashCommandOrSavedPrompt::LocalWorkflow { workflow } => {
+                ctx.emit(SlashCommandsEvent::SelectedLocalWorkflow {
+                    workflow: workflow.clone(),
+                });
             }
             AcceptSlashCommandOrSavedPrompt::Skill { name, reference } => {
                 ctx.emit(SlashCommandsEvent::SelectedSkill {

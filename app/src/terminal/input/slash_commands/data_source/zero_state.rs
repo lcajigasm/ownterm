@@ -2,6 +2,7 @@ use itertools::Itertools;
 use warp_core::features::FeatureFlag;
 use warpui::{Entity, ModelHandle, SingletonEntity};
 
+use super::LocalWorkflowSlashSource;
 use crate::ai::skills::SkillManager;
 use crate::cloud_object::model::persistence::CloudModel;
 use crate::search::SyncDataSource;
@@ -70,6 +71,8 @@ impl SyncDataSource for GuiZeroStateDataSource {
             }
         }
 
+        results.extend(LocalWorkflowSlashSource::menu_items("", app));
+
         if is_cloud_mode_v2 && AISettings::as_ref(app).is_any_ai_enabled(app) {
             let saved_prompts: Vec<_> = CloudModel::as_ref(app)
                 .get_all_active_workflows()
@@ -122,12 +125,11 @@ impl SyncDataSource for TuiZeroStateDataSource {
             return Ok(vec![]);
         }
 
-        Ok(self
+        let mut results = self
             .slash_command_data_source
             .as_ref(app)
-            .ordered_zero_state_commands(app)
-            .into_iter()
-            .map(Into::into)
-            .collect())
+            .ordered_zero_state_commands(app);
+        results.extend(LocalWorkflowSlashSource::menu_items("", app));
+        Ok(results.into_iter().map(Into::into).collect())
     }
 }

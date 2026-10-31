@@ -2045,6 +2045,7 @@ fn selected_slash_command_id(
     match menu_model.as_ref(ctx).selected_action()? {
         AcceptSlashCommandOrSavedPrompt::SlashCommand { id } => Some(id),
         AcceptSlashCommandOrSavedPrompt::SavedPrompt { .. }
+        | AcceptSlashCommandOrSavedPrompt::LocalWorkflow { .. }
         | AcceptSlashCommandOrSavedPrompt::Skill { .. } => None,
     }
 }
