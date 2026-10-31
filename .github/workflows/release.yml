@@ -26,10 +26,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
+          # macos-14 is in a retirement brownout through 2026-11-02 and rejects jobs.
+          - os: macos-15
             target: aarch64-apple-darwin
             artifact_name: ownterm-macos-arm64
-          - os: macos-14
+          - os: macos-15
             target: x86_64-apple-darwin
             artifact_name: ownterm-macos-x86_64
           - os: ubuntu-22.04
@@ -42,6 +43,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # A manual run builds the requested tag with this workflow file, so a
+          # runner-image fix on master can still publish binaries for that tag.
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.sha }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@1.92.0

@@ -288,8 +288,8 @@ OwnTerm includes full automated continuous delivery for versioning, building, an
 
 Pushing a tag `vX.Y.Z` runs [`.github/workflows/release.yml`](.github/workflows/release.yml), which builds `ownterm` and `ownterm-tui` for:
 
-- macOS Apple Silicon (`aarch64-apple-darwin` on `macos-14`)
-- macOS Intel (`x86_64-apple-darwin` on `macos-14`)
+- macOS Apple Silicon (`aarch64-apple-darwin` on `macos-15`)
+- macOS Intel (`x86_64-apple-darwin` on `macos-15`)
 - Linux (`x86_64-unknown-linux-gnu` on `ubuntu-22.04`)
 - Windows (`x86_64-pc-windows-msvc` on `windows-latest`)
 
