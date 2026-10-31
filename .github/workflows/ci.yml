@@ -67,12 +67,17 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@1.92.0
 
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "25.x"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Install system libraries
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             pkg-config \
-            protobuf-compiler \
             g++ \
             libasound2-dev \
             libfontconfig1-dev \
