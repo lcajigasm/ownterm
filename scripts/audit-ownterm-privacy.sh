@@ -21,8 +21,10 @@ require() {
 
 require app/src/bin/oss.rs "telemetry_config: None"
 require app/src/bin/oss.rs "crash_reporting_config: None"
+require app/src/bin/oss.rs "autoupdate_config: None"
 require app/src/bin/oss.rs "WarpServerConfig::disabled()"
 require crates/warp_tui/src/bin/oss.rs "telemetry_config: None"
+require crates/warp_tui/src/bin/oss.rs "autoupdate_config: None"
 require crates/warp_tui/src/bin/oss.rs "WarpServerConfig::disabled()"
 
 for bin in stable dev local preview; do
@@ -92,5 +94,21 @@ fi
 if grep -n "git push origin" .github/workflows/ci.yml | grep -q -- "--force"; then
   fail "CI must not force-push tags"
 fi
+
+require script/install-ownterm.sh "SHA256SUMS"
+require script/install-ownterm.sh "ownterm_assert_download_host"
+require docs/usage.md "provider.env"
+require docs/usage.md "SHA256SUMS"
+require docs/usage.md "~/.ownterm/workflows"
+require .github/workflows/ci.yml "cargo check -p warp --bin ownterm"
+require .github/workflows/ci.yml "cargo check -p warp_tui --bin ownterm-tui"
+require .github/workflows/ci.yml "bash script/test_install_ownterm.sh"
+
+if grep -n -E 'releases\.warp\.dev|rudderstack|sentry\.io|segment\.(com|io)|warp\.dev' \
+  script/install-ownterm.sh docs/usage.md; then
+  fail "the installer or the usage guide names a Warp or telemetry host"
+fi
+
+bash script/test_install_ownterm.sh
 
 echo "privacy audit: ok"

@@ -2,21 +2,21 @@
 
 OwnTerm es un fork del cliente Warp (Warp Services, Inc.). El núcleo del terminal sigue bajo AGPL-3.0 y MIT. OwnTerm no está afiliado a Warp. Esta matriz compara bloques del cliente upstream con el binario `ownterm` (`Channel::Oss`) en este repositorio.
 
-La evidencia de compilación del cliente completo es el release [v0.1.1](https://github.com/lcajigasm/ownterm/releases/tag/v0.1.1), que adjunta archivos para macOS arm64, macOS x86_64, Linux x86_64 y Windows x86_64. Esta tanda no recompiló ese binario en local. El CI de pull request cubre la auditoría de privacidad, `ownterm_provider` y los tests de configuración de canal.
+La evidencia de compilación del cliente completo es el release [v0.2.0](https://github.com/lcajigasm/ownterm/releases/tag/v0.2.0), que adjunta archivos para macOS arm64, macOS x86_64, Linux x86_64 y Windows x86_64. El CI de pull request audita la privacidad, prueba el instalador sin red, cubre `ownterm_provider` y los tests de canal, y ejecuta `cargo check` de `ownterm` y `ownterm-tui` en Linux. El empaquetado de las cuatro plataformas sigue siendo el workflow del tag.
 
 ## Matriz
 
 | Pri. | Bloque | En Warp | En OwnTerm ahora | Hueco |
 | :--- | :--- | :--- | :--- | :--- |
 | P0 | Telemetría y crashes | RudderStack y Sentry en los canales de producto | Los macros no evalúan el evento si el canal no puede transmitir. `record_event` no construye ni encola nada salvo un opt-in de test. Sentry no arranca sin DSN | Quedan los tipos y los literales en el fuente. No se ejecutan en los binarios de OwnTerm |
-| P0 | Cuenta y suscripción | Login obligatorio y créditos de IA | Sin proveedor, el chip y Ajustes muestran «No AI provider» y abren la configuración local. Con proveedor directo no hay aviso de créditos | No hay un asistente gráfico para escribir `provider.env` |
+| P0 | Cuenta y suscripción | Login obligatorio y créditos de IA | Sin proveedor, el chip y Ajustes muestran «No AI provider» y abren la configuración local. `docs/usage.md` explica `provider.env` y el primer arranque | No hay un asistente gráfico para escribir `provider.env` |
 | P0 | Proveedores de IA | Inferencia en los servidores de Warp | `Channel::Oss` usa `ownterm_openai` contra `/chat/completions`. Presets: Ollama, LM Studio, vLLM, LocalAI, OpenAI, xAI, OpenRouter, Groq y compatible. Herramientas `run_shell_command` y `read_files` | No hay adaptadores nativos de Anthropic ni Google. El catálogo de modelos no se descarga del proveedor. Faltan más herramientas del agente Warp |
 | P1 | Bloques, pestañas, paneles, temas | Sí | El código del cliente sigue en `app/` y se empaqueta en `ownterm` | No hay una pasada de verificación visual en esta tanda. Identidad visual todavía mezcla recursos upstream |
-| P1 | Autocompletado y workflows | Sí, parte acoplada a Warp Drive y a la nube | La búsqueda de comandos incluye workflows de `~/.ownterm/workflows` sin Drive. El menú `/` inserta esos workflows. El palette busca archivos locales (`CommandPaletteFileSearch`). El autocompletado de shell no llama a Warp | Los workflows de agente en la nube y el catálogo de Drive siguen apagados. No hay editor visual para crear el YAML |
+| P1 | Autocompletado y workflows | Sí, parte acoplada a Warp Drive y a la nube | La búsqueda de comandos incluye workflows de `~/.ownterm/workflows` sin Drive. El menú `/` inserta esos workflows. La guía de uso trae un YAML de ejemplo. El palette busca archivos locales | Los workflows de agente en la nube y el catálogo de Drive siguen apagados. No hay editor visual para crear el YAML |
 | P1 | Warp Drive, equipos, billing, Oz | Núcleo del producto de pago | Servidor, RTC y Oz apuntan a `127.0.0.1:9`. Flags de cloud, billing y onboarding de cuenta están apagados en OSS | No hay sustituto local de sincronización. Esas pantallas pueden seguir existiendo y no hacer nada útil |
-| P2 | Actualizaciones automáticas | `releases.warp.dev` | `autoupdate_config` vacío en OSS y tras `without_warp_services()` | Las releases salen por GitHub. No hay updater dentro de la app |
-| P2 | Firma y notarización | Firmado por Warp | Los artefactos de Actions no se firman | macOS Gatekeeper y SmartScreen quedan para quien instala el tarball |
-| P3 | CI del cliente completo | Interno | El PR solo compila el crate de proveedores y `warp_core` (tests de canal). El binario completo se construye al etiquetar `vX.Y.Z` | Un fallo de compilación del GUI no se ve hasta el workflow de release |
+| P2 | Actualizaciones automáticas | `releases.warp.dev` | `script/install-ownterm.sh` baja el archivo de GitHub Releases, comprueba `SHA256SUMS` y sustituye los binarios. `autoupdate_config` sigue vacío, así que la app no descarga nada | No hay updater dentro de la app |
+| P2 | Firma y notarización | Firmado por Warp | Los artefactos de Actions no se firman. La guía de uso avisa de Gatekeeper y SmartScreen | macOS Gatekeeper y SmartScreen quedan para quien instala el tarball |
+| P3 | CI del cliente completo | Interno | El PR ejecuta `cargo check` de `ownterm` y `ownterm-tui` en Linux, además de la auditoría y `ownterm_provider` | No sustituye el build de release de las cuatro plataformas |
 
 ## Telemetría retirada o desactivada en esta tanda
 
@@ -32,4 +32,4 @@ La evidencia de compilación del cliente completo es el release [v0.1.1](https:/
 
 1. Asistente en Ajustes para escribir el proveedor (preset, modelo y endpoint) sin editar `provider.env` a mano, y un catálogo de modelos del endpoint.
 2. Pasada visual de bloques, pestañas, paneles y temas: la identidad sigue mezclando recursos de Warp.
-3. Actualizador desde las releases de GitHub, sin `releases.warp.dev`, y firma de los binarios.
+3. Firma y notarización de los binarios. El instalador comprueba `SHA256SUMS`; Gatekeeper y SmartScreen siguen avisando.

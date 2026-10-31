@@ -76,6 +76,15 @@ Modern terminals need more than classic 80x24 character grids — they need bloc
 
 Precompiled archives are attached to [GitHub Releases](https://github.com/lcajigasm/ownterm/releases/latest). Each archive contains `ownterm` and `ownterm-tui`.
 
+From a checkout, install or update the binaries for this machine into `~/.local/bin`. The script checks `SHA256SUMS` before it writes them. The app does not download updates by itself.
+
+```bash
+bash script/install-ownterm.sh
+bash script/install-ownterm.sh --provider ollama --model llama3.3
+```
+
+The day-to-day guide (first launch, `provider.env`, and local workflows) is [docs/usage.md](docs/usage.md). Archives are not code-signed.
+
 | Platform | Architecture | Package |
 | :--- | :--- | :--- |
 | **macOS** | Apple Silicon (M1/M2/M3/M4) | [ownterm-macos-arm64.tar.gz](https://github.com/lcajigasm/ownterm/releases/latest/download/ownterm-macos-arm64.tar.gz) |
@@ -273,7 +282,7 @@ OwnTerm includes full automated continuous delivery for versioning, building, an
 
 ### 1. Pull request CI
 
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on pull requests and on `master`. It audits the privacy gates, formats and lints `ownterm_provider`, and tests that crate plus the channel-config unit tests. It does not publish a release.
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on pull requests and on `master`. It audits the privacy gates, tests the release installer offline, formats and lints `ownterm_provider`, tests that crate plus the channel-config unit tests, and typechecks the `ownterm` and `ownterm-tui` binaries on Linux. It does not publish a release.
 
 ### 2. Tagged release binaries
 
