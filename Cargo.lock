@@ -9908,6 +9908,7 @@ name = "ownterm_provider"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "serde_json",
  "url",
 ]
 
@@ -16211,6 +16212,7 @@ dependencies = [
  "log",
  "markdown_parser",
  "num-traits",
+ "ownterm_provider",
  "parking_lot",
  "pathfinder_color",
  "pathfinder_geometry",

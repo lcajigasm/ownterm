@@ -28,7 +28,7 @@ use settings_page::{
 use show_blocks_view::{ShowBlocksEvent, ShowBlocksView};
 use teams_page::{TeamsPageAction, TeamsPageView, TeamsPageViewEvent};
 use warp_agent_page::{WarpAgentPageAction, WarpAgentPageEvent, WarpAgentPageView};
-use warp_core::channel::ChannelState;
+use warp_core::channel::{Channel, ChannelState};
 use warp_core::context_flag::ContextFlag;
 use warp_core::features::FeatureFlag;
 use warp_core::send_telemetry_from_ctx;
@@ -1049,6 +1049,39 @@ enum NavStop {
     },
 }
 
+/// Cloud, billing, and account screens stay in the binary but do nothing useful
+/// on the OSS channel. The sidebar drops them so Settings opens on the agent page.
+fn oss_settings_section_visible(section: SettingsSection) -> bool {
+    !matches!(
+        section,
+        SettingsSection::Account
+            | SettingsSection::BillingAndUsage
+            | SettingsSection::Teams
+            | SettingsSection::WarpDrive
+            | SettingsSection::Referrals
+            | SettingsSection::SharedBlocks
+            | SettingsSection::CloudEnvironments
+            | SettingsSection::WarpCloudAgentAPIKeys
+            | SettingsSection::Warpify
+    )
+}
+
+fn local_settings_nav(items: Vec<SettingsNavItem>) -> Vec<SettingsNavItem> {
+    items
+        .into_iter()
+        .filter_map(|item| match item {
+            SettingsNavItem::Page(section) if oss_settings_section_visible(section) => {
+                Some(SettingsNavItem::Page(section))
+            }
+            SettingsNavItem::Page(_) => None,
+            SettingsNavItem::Umbrella(mut umbrella) => {
+                umbrella.retain_subpages(oss_settings_section_visible);
+                (!umbrella.subpages.is_empty()).then_some(SettingsNavItem::Umbrella(umbrella))
+            }
+        })
+        .collect()
+}
+
 /// Builds the ordered list of arrow-key nav stops from `nav_items`.
 ///
 /// `is_visible` decides which sections are currently shown in the sidebar;
@@ -1457,12 +1490,19 @@ impl SettingsView {
             );
         }
 
-        let initial_page = match page {
+        if ChannelState::channel() == Channel::Oss {
+            nav_items = local_settings_nav(nav_items);
+        }
+
+        let mut initial_page = match page {
             Some(SettingsSection::Scripting) if !FeatureFlag::WarpControlCli.is_enabled() => {
                 SettingsSection::Account
             }
             other => other.unwrap_or_default(),
         };
+        if ChannelState::channel() == Channel::Oss && !oss_settings_section_visible(initial_page) {
+            initial_page = SettingsSection::WarpAgent;
+        }
 
         // Auto-expand the umbrella if the initial page is one of its subpages.
         for item in &mut nav_items {

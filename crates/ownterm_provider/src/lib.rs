@@ -195,6 +195,138 @@ pub fn chat_completions_url(base_url: &str) -> anyhow::Result<Url> {
     Ok(url)
 }
 
+/// OpenAI `/models` URL for a chat base URL. Does not contact the network.
+pub fn models_list_url(base_url: &str) -> anyhow::Result<Url> {
+    let mut url = chat_completions_url(base_url)?;
+    let path = url.path().trim_end_matches('/').to_owned();
+    let prefix = path
+        .strip_suffix("/chat/completions")
+        .unwrap_or(path.as_str())
+        .trim_end_matches('/');
+    url.set_path(&format!("{prefix}/models"));
+    Ok(url)
+}
+
+/// Catalog URL for a preset, using `base_url` when it is set.
+pub fn models_list_url_for_provider(provider: &str, base_url: Option<&str>) -> anyhow::Result<Url> {
+    let preset = find_preset(provider).with_context(|| format!("unknown provider '{provider}'"))?;
+    let base = nonempty(base_url)
+        .map(str::to_owned)
+        .or_else(|| preset.default_base_url.map(str::to_owned))
+        .context("set a base URL for this provider")?;
+    models_list_url(&base)
+}
+
+/// Static model ids a user can pass to `OWNTERM_MODEL`. Not a live catalog.
+pub fn suggested_models(provider_id: &str) -> &'static [&'static str] {
+    match find_preset(provider_id).map(|preset| preset.id) {
+        Some("ollama") => &["llama3.3", "qwen2.5-coder:7b"],
+        Some("lmstudio") => &["qwen2.5-coder-7b-instruct"],
+        Some("vllm") => &["Qwen/Qwen2.5-Coder-7B-Instruct"],
+        Some("localai") => &["llama3.3"],
+        Some("openai") => &["gpt-4o", "gpt-4o-mini"],
+        Some("xai") => &["grok-3", "grok-3-mini"],
+        Some("openrouter") => &["openai/gpt-4o-mini"],
+        Some("groq") => &["llama-3.3-70b-versatile"],
+        _ => &[],
+    }
+}
+
+/// Model ids from an OpenAI `/models` document (`{"data":[{"id":"..."}]}`).
+pub fn parse_model_ids(body: &str) -> anyhow::Result<Vec<String>> {
+    let value: serde_json::Value =
+        serde_json::from_str(body).context("model catalog is not JSON")?;
+    let data = value
+        .get("data")
+        .and_then(|data| data.as_array())
+        .context("model catalog is missing data")?;
+    let mut ids = Vec::new();
+    for item in data {
+        let Some(id) = item.get("id").and_then(|id| id.as_str()) else {
+            continue;
+        };
+        let id = id.trim();
+        if !id.is_empty() {
+            ids.push(id.to_owned());
+        }
+    }
+    Ok(ids)
+}
+
+/// `~/.ownterm/provider.env`, or `OWNTERM_PROVIDER_FILE` when that variable is set.
+pub fn default_provider_file_path() -> anyhow::Result<std::path::PathBuf> {
+    if let Some(path) = nonempty_owned(std::env::var(ENV_PROVIDER_FILE).ok()) {
+        return Ok(std::path::PathBuf::from(path));
+    }
+    let home = dirs_home().context("HOME is not set")?;
+    Ok(home.join(".ownterm").join("provider.env"))
+}
+
+pub fn format_provider_file(
+    provider: &str,
+    model: &str,
+    base_url: Option<&str>,
+) -> anyhow::Result<String> {
+    let preset = find_preset(provider).with_context(|| format!("unknown provider '{provider}'"))?;
+    let model = validate_provider_token("model", model)?;
+    let id = preset.id;
+    let mut text = format!("provider={id}\nmodel={model}\n");
+    if let Some(base_url) = nonempty(base_url) {
+        let base_url = validate_provider_token("base_url", base_url)?;
+        chat_completions_url(&base_url)?;
+        text.push_str(&format!("base_url={base_url}\n"));
+    } else if preset.default_base_url.is_none() {
+        bail!("compatible provider requires a base URL");
+    }
+    Ok(text)
+}
+
+/// Writes `provider`, `model`, and an optional `base_url`. Never writes an API key.
+pub fn write_provider_file(
+    path: &std::path::Path,
+    provider: &str,
+    model: &str,
+    base_url: Option<&str>,
+) -> anyhow::Result<()> {
+    let text = format_provider_file(provider, model, base_url)?;
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+    std::fs::write(path, text)
+        .with_context(|| format!("failed to write provider file {}", path.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+            .with_context(|| format!("failed to set permissions on {}", path.display()))?;
+    }
+    Ok(())
+}
+
+fn validate_provider_token(key: &str, value: &str) -> anyhow::Result<String> {
+    let value = value.trim();
+    if value.is_empty()
+        || value.contains('=')
+        || value
+            .chars()
+            .any(|ch| ch.is_whitespace() || ch.is_control())
+    {
+        bail!("{key} must be a single token");
+    }
+    let lower = value.to_ascii_lowercase();
+    if lower.contains("api_key")
+        || lower.contains("apikey")
+        || lower.contains("token")
+        || lower.contains("secret")
+    {
+        bail!("{key} must not carry a secret; set {ENV_API_KEY} in the environment");
+    }
+    Ok(value.to_owned())
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct ProviderFile {
     provider: Option<String>,
@@ -389,5 +521,65 @@ mod tests {
         })
         .unwrap_err();
         assert!(err.to_string().contains("unknown OWNTERM_PROVIDER"));
+    }
+
+    #[test]
+    fn write_provider_file_round_trips_without_a_secret() {
+        let dir =
+            std::env::temp_dir().join(format!("ownterm-provider-{}-roundtrip", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        let path = dir.join("provider.env");
+        write_provider_file(
+            &path,
+            "Ollama",
+            "llama3.3",
+            Some("http://127.0.0.1:11434/v1"),
+        )
+        .unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(!text.to_ascii_lowercase().contains("api_key"));
+        let file = parse_provider_file(&text).unwrap();
+        assert_eq!(file.provider.as_deref(), Some("ollama"));
+        assert_eq!(file.model.as_deref(), Some("llama3.3"));
+        assert_eq!(file.base_url.as_deref(), Some("http://127.0.0.1:11434/v1"));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn write_provider_file_rejects_secrets_and_public_http() {
+        assert!(format_provider_file("ollama", "api_key=sk", None).is_err());
+        assert!(format_provider_file("ollama", "my-token", None).is_err());
+        assert!(format_provider_file("ollama", "llama3.3", Some("http://example.com/v1")).is_err());
+        assert!(format_provider_file("compatible", "m", None).is_err());
+        assert!(format_provider_file("nope", "m", None).is_err());
+    }
+
+    #[test]
+    fn suggested_models_and_catalog_url_stay_local() {
+        assert_eq!(
+            suggested_models("ollama"),
+            &["llama3.3", "qwen2.5-coder:7b"]
+        );
+        assert!(suggested_models("compatible").is_empty());
+        assert!(suggested_models("not-a-provider").is_empty());
+        assert_eq!(
+            models_list_url("http://127.0.0.1:11434/v1")
+                .unwrap()
+                .as_str(),
+            "http://127.0.0.1:11434/v1/models"
+        );
+        assert_eq!(
+            models_list_url_for_provider("xai", None).unwrap().as_str(),
+            "https://api.x.ai/v1/models"
+        );
+        let ids = parse_model_ids(r#"{"data":[{"id":"llama3.3"},{"id":"  "},{}]}"#).unwrap();
+        assert_eq!(ids, vec!["llama3.3".to_owned()]);
+        assert!(parse_model_ids("not-json").is_err());
     }
 }

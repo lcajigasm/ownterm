@@ -28,7 +28,7 @@ Use the asset name for your machine: `ownterm-macos-arm64`, `ownterm-macos-x86_6
 
 ## First launch
 
-Start `ownterm`. There is no signup step. With no model configured, the prompt shows **No AI provider** and the link opens AI settings. The shell still runs.
+Start `ownterm`. There is no signup step. With no model configured, the prompt shows **No AI provider**. Settings opens on the agent page and leaves out billing, teams, and Warp Drive. The shell still runs.
 
 You can leave the model unset and use OwnTerm as a terminal. Set a provider when you want the agent.
 
@@ -48,6 +48,14 @@ Or edit the file yourself:
 provider=ollama
 model=llama3.3
 ```
+
+`ownterm-tui configure-provider` writes that file. It does not store an API key.
+
+```bash
+ownterm-tui configure-provider --provider ollama --model llama3.3
+```
+
+`ownterm-tui models --provider ollama` prints suggested model ids and the catalog URL for that endpoint (`/models`). It does not download the catalog. Pass `--base-url` when the preset needs one, or to point at your own server.
 
 | `provider` | Default base URL | Key |
 | :--- | :--- | :--- |

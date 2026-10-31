@@ -60,6 +60,7 @@ itertools.workspace = true
 log.workspace = true
 markdown_parser.workspace = true
 num-traits.workspace = true
+ownterm_provider.workspace = true
 parking_lot.workspace = true
 pathfinder_color.workspace = true
 pathfinder_geometry.workspace = true
