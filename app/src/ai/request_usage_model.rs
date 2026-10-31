@@ -6,6 +6,7 @@ use chrono::{DateTime, Local, Utc};
 use futures::channel::oneshot::{self, Receiver};
 use instant::Instant;
 use serde::{Deserialize, Serialize};
+use warp_core::channel::{Channel, ChannelState};
 use warp_core::user_preferences::GetUserPreferences as _;
 use warp_errors::report_error;
 pub use warp_graphql::billing::BonusGrantType;
@@ -518,6 +519,9 @@ impl AIRequestUsageModel {
     /// Returns `true` if the user can start an interactive AI request.
     /// Prefers the server decision when present; otherwise uses the pre-fetch fallback.
     pub fn has_any_ai_remaining<S: TeamScope + ?Sized>(&self, scope: &S, ctx: &AppContext) -> bool {
+        if oss_direct_provider_ready(ctx) {
+            return true;
+        }
         if let Some(availability) = self.server_availability.latest {
             return Self::server_availability_permits_ai(availability, scope, ctx);
         }
@@ -931,6 +935,19 @@ impl AIRequestUsageModel {
 }
 
 impl SingletonEntity for AIRequestUsageModel {}
+
+pub(crate) fn oss_direct_provider_ready(app: &AppContext) -> bool {
+    if ChannelState::channel() != Channel::Oss {
+        return false;
+    }
+    if ownterm_provider::direct_inference_configured() {
+        return true;
+    }
+    ApiKeyManager::as_ref(app)
+        .custom_endpoints()
+        .iter()
+        .any(|endpoint| !endpoint.url.trim().is_empty())
+}
 
 #[cfg(test)]
 #[path = "request_usage_model_tests.rs"]

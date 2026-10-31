@@ -306,6 +306,11 @@ impl TelemetryApi {
         messages: Vec<RudderBatchMessageWithMetadata>,
         settings_snapshot: PrivacySettingsSnapshot,
     ) -> Result<()> {
+        if !ChannelState::may_transmit_telemetry() {
+            log::debug!("Dropping telemetry batch; network telemetry is disabled for this build.");
+            return Ok(());
+        }
+
         if messages.is_empty() {
             log::debug!("Dropping empty RudderStack telemetry batch");
             return Ok(());

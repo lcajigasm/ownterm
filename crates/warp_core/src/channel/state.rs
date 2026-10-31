@@ -198,6 +198,14 @@ impl ChannelState {
         CHANNEL_STATE.lock().config.telemetry_config.is_some()
     }
 
+    /// Whether this process may open a connection to a telemetry vendor.
+    ///
+    /// The OwnTerm channel never transmits, even if a telemetry config is present.
+    /// Other channels transmit only when a telemetry config was actually loaded.
+    pub fn may_transmit_telemetry() -> bool {
+        !matches!(Self::channel(), Channel::Oss) && Self::is_telemetry_available()
+    }
+
     /// Returns whether this build has a crash reporting config and can therefore
     /// ship crash reports. Builds like OpenWarp intentionally ship with
     /// `crash_reporting_config: None`, in which case UI that controls crash

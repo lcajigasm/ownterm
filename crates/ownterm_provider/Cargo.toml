@@ -1,0 +1,10 @@
+[package]
+name = "ownterm_provider"
+edition = "2024"
+description = "Named OpenAI-compatible model providers for OwnTerm"
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+url.workspace = true

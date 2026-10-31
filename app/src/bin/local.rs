@@ -3,18 +3,13 @@ use warp_core::channel::{Channel, ChannelState};
 use warp_core::features;
 
 fn main() -> Result<()> {
-    let config = warp_channel_config::load_config!("local");
+    let config = warp_channel_config::load_config!("local").without_warp_services();
 
-    let mut state = ChannelState::new(Channel::Local, config)
+    let state = ChannelState::new(Channel::Local, config)
         .with_additional_features(features::DEBUG_FLAGS)
         .with_additional_features(features::DOGFOOD_FLAGS)
         .with_additional_features(features::PREVIEW_FLAGS)
         .with_additional_features(features::LOCAL_FLAGS);
-
-    // Enable sandbox telemetry feature flag if the env var is set.
-    if std::env::var("WITH_SANDBOX_TELEMETRY").is_ok() {
-        state = state.with_additional_features(&[features::FeatureFlag::WithSandboxTelemetry]);
-    }
 
     ChannelState::set(state);
 

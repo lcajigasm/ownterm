@@ -1,0 +1,170 @@
+name: OwnTerm Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to attach binaries to (vX.Y.Z)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build (${{ matrix.artifact_name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+            artifact_name: ownterm-macos-arm64
+          - os: macos-14
+            target: x86_64-apple-darwin
+            artifact_name: ownterm-macos-x86_64
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            artifact_name: ownterm-linux-x86_64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: ownterm-windows-x86_64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.92.0
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "25.x"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup macOS
+        if: runner.os == 'macOS'
+        run: echo "WARP_LOCAL_SKIP_METAL=1" >> "$GITHUB_ENV"
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config \
+            libasound2-dev \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            libxcb-xfixes0-dev \
+            libxkbcommon-dev \
+            libssl-dev \
+            libx11-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libxrandr-dev \
+            libgl1-mesa-dev
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build OwnTerm GUI and TUI
+        shell: bash
+        run: |
+          cargo build --release --target ${{ matrix.target }} -p warp --bin ownterm
+          cargo build --release --target ${{ matrix.target }} -p warp_tui --bin ownterm-tui
+
+      - name: Package Unix
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mkdir -p staging
+          cp "target/${{ matrix.target }}/release/ownterm" staging/ownterm
+          cp "target/${{ matrix.target }}/release/ownterm-tui" staging/ownterm-tui
+          cp README.md LICENSE-AGPL LICENSE-MIT staging/
+          tar -C staging -czf "${{ matrix.artifact_name }}.tar.gz" .
+          shasum -a 256 "${{ matrix.artifact_name }}.tar.gz" > "${{ matrix.artifact_name }}.tar.gz.sha256"
+
+      - name: Package Windows
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          mkdir -p staging
+          cp "target/${{ matrix.target }}/release/ownterm.exe" staging/ownterm.exe
+          cp "target/${{ matrix.target }}/release/ownterm-tui.exe" staging/ownterm-tui.exe
+          cp README.md LICENSE-AGPL LICENSE-MIT staging/
+          tar -C staging -czf "${{ matrix.artifact_name }}.tar.gz" .
+          sha256sum "${{ matrix.artifact_name }}.tar.gz" > "${{ matrix.artifact_name }}.tar.gz.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            ${{ matrix.artifact_name }}.tar.gz
+            ${{ matrix.artifact_name }}.tar.gz.sha256
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Refusing non-semver tag: $TAG" >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Collect archives
+        shell: bash
+        run: |
+          mkdir -p dist
+          find release-artifacts -type f -name "*.tar.gz" -exec cp {} dist/ \;
+          find release-artifacts -type f -name "*.sha256" -exec cat {} + > dist/SHA256SUMS
+          cat dist/SHA256SUMS
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: OwnTerm ${{ steps.tag.outputs.tag }}
+          draft: false
+          prerelease: false
+          files: dist/*
+          body: |
+            OwnTerm ${{ steps.tag.outputs.tag }}
+
+            Open-source, local-first terminal. No Warp account, no telemetry upload.
+
+            Archives include `ownterm` and `ownterm-tui` for macOS (arm64 and x86_64), Linux x86_64, and Windows x86_64.
+            Verify downloads with `SHA256SUMS`.

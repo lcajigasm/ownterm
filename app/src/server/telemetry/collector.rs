@@ -42,6 +42,12 @@ impl TelemetryCollector {
     }
 
     pub fn initialize_telemetry_collection(&self, ctx: &mut ModelContext<TelemetryCollector>) {
+        if !ChannelState::may_transmit_telemetry() {
+            self.discard_persisted_telemetry_files();
+            self.schedule_discard_queued_events(ctx);
+            return;
+        }
+
         // Start a background thread to periodically flush events from the telemetry event queue.
         if ChannelState::is_release_bundle() || FeatureFlag::WithSandboxTelemetry.is_enabled() {
             // Flush the events to Rudderstack that were persisted into a file the last time the app was
@@ -99,6 +105,11 @@ impl TelemetryCollector {
     /// * Write events to disk, for sending on the next app startup
     /// * Synchronously send events to rudderstack
     pub fn flush_telemetry_events_for_shutdown(&self, ctx: &mut ModelContext<TelemetryCollector>) {
+        if !ChannelState::may_transmit_telemetry() {
+            let _ = warpui::telemetry::flush_events();
+            return;
+        }
+
         let execution_mode = AppExecutionMode::as_ref(ctx);
 
         if execution_mode.send_telemetry_at_shutdown() {
@@ -127,6 +138,30 @@ impl TelemetryCollector {
             }
         } else {
             self.write_telemetry_events_to_disk(ctx);
+        }
+    }
+
+    fn schedule_discard_queued_events(&self, ctx: &mut ModelContext<TelemetryCollector>) {
+        let _ = ctx.spawn(
+            async move {
+                Timer::after(TELEMETRY_FLUSH_DURATION).await;
+            },
+            |me, _, ctx| {
+                let _ = warpui::telemetry::flush_events();
+                me.schedule_discard_queued_events(ctx);
+            },
+        );
+    }
+
+    fn discard_persisted_telemetry_files(&self) {
+        let new_path = rudder_event_file_path();
+        let old_path = warp_core::paths::state_dir().join(RUDDER_TELEMETRY_EVENTS_FILE_NAME);
+        for path in [new_path, old_path] {
+            if let Err(error) = remove_file(&path)
+                && error.kind() != std::io::ErrorKind::NotFound
+            {
+                log::warn!("Failed to remove persisted telemetry file: {error}");
+            }
         }
     }
 

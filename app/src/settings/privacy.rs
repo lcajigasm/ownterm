@@ -6,6 +6,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use settings::macros::{define_settings_group, maybe_define_setting, register_settings_events};
 use settings::{RespectUserSyncSetting, Setting, SupportedPlatforms, SyncToCloud};
+use warp_core::channel::ChannelState;
 use warp_core::features::FeatureFlag;
 use warp_errors::{report_error, report_if_error};
 use warp_graphql::mutations::update_user_settings::UpdateUserSettingsInput;
@@ -246,11 +247,17 @@ impl PrivacySettings {
         // Initialize from `WarpDrivePrivacySettings`, which is the source of truth for these
         // booleans.
         let warp_drive_privacy = WarpDrivePrivacySettings::as_ref(ctx);
-        let is_telemetry_enabled = *warp_drive_privacy.is_telemetry_enabled.value();
-        let is_crash_reporting_enabled = *warp_drive_privacy.is_crash_reporting_enabled.value();
-        let is_cloud_conversation_storage_enabled = *warp_drive_privacy
-            .is_cloud_conversation_storage_enabled
-            .value();
+        // OwnTerm builds have no telemetry or crash destination. Ignore a stored
+        // opt-in so the privacy UI cannot claim that reporting is active.
+        let reporting_available = ChannelState::may_transmit_telemetry();
+        let is_telemetry_enabled =
+            reporting_available && *warp_drive_privacy.is_telemetry_enabled.value();
+        let is_crash_reporting_enabled = ChannelState::is_crash_reporting_available()
+            && *warp_drive_privacy.is_crash_reporting_enabled.value();
+        let is_cloud_conversation_storage_enabled = reporting_available
+            && *warp_drive_privacy
+                .is_cloud_conversation_storage_enabled
+                .value();
 
         // Listen for changes to the cloud model and update ourselves when they happen.
         ctx.subscribe_to_model(
