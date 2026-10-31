@@ -114,7 +114,7 @@ OwnTerm connects to any inference engine that exposes an OpenAI-compatible `/cha
 
 `OWNTERM_MODEL` is always required. `OWNTERM_BASE_URL` overrides the preset. HTTP is accepted only for `localhost` and loopback addresses.
 
-You can also put non-secret fields in `~/.ownterm/provider.env` (or `OWNTERM_PROVIDER_FILE`). Environment variables win. The file is rejected if it contains `api_key`, `token`, or `secret`.
+You can also put non-secret fields in `~/.ownterm/provider.env` (or `OWNTERM_PROVIDER_FILE`). Environment variables win. The file is rejected if it contains `api_key`, `token`, or `secret`. `ownterm-tui configure-provider --provider ollama --model llama3.3` writes the file. `ownterm-tui models --provider ollama` prints suggested ids and the `/models` URL without downloading it.
 
 ```
 provider=xai

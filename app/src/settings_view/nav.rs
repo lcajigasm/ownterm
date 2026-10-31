@@ -49,6 +49,18 @@ impl SettingsUmbrella {
         self.subpages.contains(&section)
     }
 
+    /// Drops subpages `keep` rejects, keeping each remaining mouse state aligned.
+    pub fn retain_subpages(&mut self, mut keep: impl FnMut(SettingsSection) -> bool) {
+        let paired: Vec<_> = std::mem::take(&mut self.subpages)
+            .into_iter()
+            .zip(std::mem::take(&mut self.subpage_button_states))
+            .filter(|(section, _)| keep(*section))
+            .collect();
+        let (subpages, states) = paired.into_iter().unzip();
+        self.subpages = subpages;
+        self.subpage_button_states = states;
+    }
+
     /// Render the umbrella header row (label + chevron).
     /// Returns a `Hoverable` so the entire row shares a single hover/click
     /// target — i.e. the hover styling and pointing-hand cursor apply to the

@@ -3311,7 +3311,7 @@ fn render_global_ai_toggle(
                 Container::new(
                     ConstrainedBox::new(
                         Text::new_inline(
-                            "No AI provider configured. Set OWNTERM_PROVIDER and OWNTERM_MODEL, or add a custom endpoint on this page.",
+                            "No AI provider configured. Run ownterm-tui configure-provider, or set OWNTERM_PROVIDER and OWNTERM_MODEL.",
                             appearance.ui_font_family(),
                             14.,
                         )

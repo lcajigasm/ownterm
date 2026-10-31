@@ -9,7 +9,8 @@ use warpui_core::App;
 use warpui_core::runtime::TuiDriverStartupError;
 
 use super::{
-    TuiArgs, ensure_terminal_session, handle_tui_driver_startup_error, parse_resume_token,
+    TuiArgs, TuiCommand, ensure_terminal_session, handle_tui_driver_startup_error,
+    parse_resume_token,
 };
 use crate::root_view::RootTuiView;
 use crate::session_registry::TuiSessions;
@@ -64,6 +65,47 @@ fn provider_api_key_help_lists_supported_providers() {
         assert!(help.contains(&expected));
     }
     assert!(help.contains("--auto-approve"));
+}
+
+#[test]
+fn parses_configure_provider_and_models_commands() {
+    let args = TuiArgs::try_parse_from([
+        "warp",
+        "configure-provider",
+        "--provider",
+        "ollama",
+        "--model",
+        "llama3.3",
+        "--base-url",
+        "http://127.0.0.1:11434/v1",
+        "--file",
+        "/tmp/provider.env",
+    ])
+    .expect("configure-provider should parse");
+    match args.command {
+        Some(TuiCommand::ConfigureProvider {
+            provider,
+            model,
+            base_url,
+            file,
+        }) => {
+            assert_eq!(provider, "ollama");
+            assert_eq!(model, "llama3.3");
+            assert_eq!(base_url.as_deref(), Some("http://127.0.0.1:11434/v1"));
+            assert_eq!(
+                file.as_deref(),
+                Some(std::path::Path::new("/tmp/provider.env"))
+            );
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+
+    let args = TuiArgs::try_parse_from(["warp", "models", "--provider", "ollama"])
+        .expect("models should parse");
+    assert!(matches!(
+        args.command,
+        Some(TuiCommand::ListModels { ref provider, base_url: None }) if provider == "ollama"
+    ));
 }
 
 #[test]

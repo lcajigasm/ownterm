@@ -361,6 +361,23 @@ fn realistic_nav_items() -> Vec<SettingsNavItem> {
     ]
 }
 
+#[test]
+fn oss_nav_drops_cloud_screens_and_empty_umbrellas() {
+    let filtered = local_settings_nav(realistic_nav_items());
+    let labels: Vec<_> = filtered
+        .iter()
+        .map(|item| match item {
+            SettingsNavItem::Page(section) => section.to_string(),
+            SettingsNavItem::Umbrella(umbrella) => umbrella.label.to_owned(),
+        })
+        .collect();
+    assert_eq!(labels, vec!["Agents".to_owned(), "Code".to_owned()]);
+    assert!(!oss_settings_section_visible(SettingsSection::WarpDrive));
+    assert!(!oss_settings_section_visible(SettingsSection::Account));
+    assert!(oss_settings_section_visible(SettingsSection::WarpAgent));
+    assert!(oss_settings_section_visible(SettingsSection::Privacy));
+}
+
 /// Mutably flips an umbrella's `expanded` flag at `nav_index`.
 fn set_expanded(nav_items: &mut [SettingsNavItem], nav_index: usize, expanded: bool) {
     if let Some(SettingsNavItem::Umbrella(u)) = nav_items.get_mut(nav_index) {

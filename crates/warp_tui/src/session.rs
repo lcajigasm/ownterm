@@ -107,6 +107,60 @@ enum TuiCommand {
         /// Write the schema to this path instead of standard output.
         output_path: Option<PathBuf>,
     },
+    /// Write provider, model, and an optional base URL. Does not store an API key.
+    ConfigureProvider {
+        #[arg(long)]
+        provider: String,
+        #[arg(long)]
+        model: String,
+        /// Override the preset endpoint. HTTP is accepted only on loopback.
+        #[arg(long)]
+        base_url: Option<String>,
+        /// Destination file. Defaults to `~/.ownterm/provider.env`.
+        #[arg(long)]
+        file: Option<PathBuf>,
+    },
+    /// Print suggested model ids and the OpenAI `/models` URL. Does not download it.
+    #[command(name = "models")]
+    ListModels {
+        #[arg(long)]
+        provider: String,
+        /// Override the preset endpoint used to build the catalog URL.
+        #[arg(long)]
+        base_url: Option<String>,
+    },
+}
+
+fn run_provider_command(command: TuiCommand) -> Result<()> {
+    match command {
+        TuiCommand::DumpSettingsSchema { output_path } => {
+            warp::features::init_feature_flags();
+            warp::settings::dump_settings_schema(output_path.as_deref())
+        }
+        TuiCommand::ConfigureProvider {
+            provider,
+            model,
+            base_url,
+            file,
+        } => {
+            let path = match file {
+                Some(path) => path,
+                None => ownterm_provider::default_provider_file_path()?,
+            };
+            ownterm_provider::write_provider_file(&path, &provider, &model, base_url.as_deref())?;
+            println!("{}", path.display());
+            Ok(())
+        }
+        TuiCommand::ListModels { provider, base_url } => {
+            let url =
+                ownterm_provider::models_list_url_for_provider(&provider, base_url.as_deref())?;
+            for id in ownterm_provider::suggested_models(&provider) {
+                println!("{id}");
+            }
+            println!("# {url}");
+            Ok(())
+        }
+    }
 }
 
 /// Reads a provider API key from a masked TTY prompt or, when stdin is piped,
@@ -162,9 +216,8 @@ pub fn run() -> Result<()> {
         }
         Err(error) => return Err(anyhow::Error::new(error)),
     };
-    if let Some(TuiCommand::DumpSettingsSchema { output_path }) = args.command {
-        warp::features::init_feature_flags();
-        return warp::settings::dump_settings_schema(output_path.as_deref());
+    if let Some(command) = args.command {
+        return run_provider_command(command);
     }
     let provider_api_key_command = if let Some(provider) = args.set_provider_api_key {
         if !provider.supports_pasted_api_key() {
