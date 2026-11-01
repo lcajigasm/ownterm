@@ -9,6 +9,9 @@
   <meta property="og:description" content="GPU-accelerated terminal with native AI tool calling. 100% private, zero telemetry, bring your own model.">
   <meta property="og:url" content="https://lcajigasm.github.io/ownterm/">
   <meta property="og:type" content="website">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -101,15 +104,18 @@
     .brand-icon {
       width: 32px;
       height: 32px;
-      background: linear-gradient(135deg, var(--primary), var(--accent-cyan));
       border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-family: 'Fira Code', monospace;
-      font-size: 1rem;
-      font-weight: 700;
-      color: #000;
+      display: block;
+    }
+    .terminal-window img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+    .terminal-window figcaption {
+      padding: 12px 16px 16px;
+      color: var(--text-muted);
+      font-size: 0.9rem;
     }
     nav {
       display: flex;
@@ -614,7 +620,7 @@
   <header>
     <div class="nav-container">
       <a href="#" class="brand">
-        <div class="brand-icon">&gt;_</div>
+        <img class="brand-icon" src="icon.svg" alt="">
         <span>OwnTerm</span>
       </a>
       <nav>
@@ -665,45 +671,10 @@
       </div>
 
       <!-- Terminal Window Simulation -->
-      <div class="terminal-window">
-        <div class="terminal-header">
-          <div class="window-controls">
-            <div class="control close"></div>
-            <div class="control minimize"></div>
-            <div class="control maximize"></div>
-          </div>
-          <div class="window-title">ownterm — ~/projects/backend</div>
-          <div style="width: 48px;"></div>
-        </div>
-        <div class="terminal-body">
-          <div class="prompt-line">
-            <span class="prompt-symbol">➜</span>
-            <span class="command">cargo test --package api</span>
-          </div>
-          <div class="terminal-block">
-            <div style="color: #ff5f56; margin-bottom: 6px;">error[E0425]: cannot find value `config` in this scope</div>
-            <div style="color: var(--text-dim);">--> api/src/server.rs:42:15</div>
-          </div>
-
-          <div class="prompt-line">
-            <span class="prompt-symbol" style="color: #9d4edd;">✦ Agent</span>
-            <span style="color: var(--text-muted);">Fix the missing config parameter and verify the tests pass</span>
-          </div>
-
-          <div class="agent-tool-call">
-            <div class="agent-tool-header">
-              <span>TOOL CALL: run_shell_command</span>
-              <div class="tool-actions">
-                <button class="btn-tool">Run (Enter)</button>
-                <button class="btn-tool-secondary">Always Allow</button>
-              </div>
-            </div>
-            <div style="color: #fff; font-size: 0.9rem;">
-              cargo check --package api &amp;&amp; cargo test --package api
-            </div>
-          </div>
-        </div>
-      </div>
+      <figure class="terminal-window">
+        <img src="screenshots/ownterm-tui-models.png" alt="ownterm-tui models --provider ollama, captured by script/capture-ownterm.sh">
+        <figcaption><code>ownterm-tui models --provider ollama</code>, captured from the real binary by <code>script/capture-ownterm.sh</code>. The macOS disk image opens the same terminal in <code>OwnTerm.app</code>.</figcaption>
+      </figure>
     </section>
 
     <!-- Features Section -->
@@ -748,9 +719,9 @@
 
         <div class="card">
           <div class="card-icon">🔑</div>
-          <h3>OS Keyring Security</h3>
+          <h3>Keys stay in the environment</h3>
           <p>
-            Your API keys are stored securely in your operating system's native keychain (macOS Keychain, Secret Service, Credential Manager).
+            Settings stores the provider, model, base URL, and the name of the environment variable. The API key itself is never written to <code>provider.env</code>.
           </p>
         </div>
 
@@ -1008,7 +979,7 @@ ownterm-tui</code></pre>
       <div class="footer-content">
         <div>
           <div class="brand" style="margin-bottom: 12px;">
-            <div class="brand-icon">&gt;_</div>
+            <img class="brand-icon" src="icon.svg" alt="">
             <span>OwnTerm</span>
           </div>
           <p style="max-width: 400px; color: var(--text-dim);">

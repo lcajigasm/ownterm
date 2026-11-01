@@ -7,7 +7,7 @@ Thanks for helping improve Warp! This guide explains how to open issues, propose
 
 ## App screenshots
 
-A picture of the OwnTerm window in the README, on GitHub Pages, or on a GitHub Release must be a capture of the real app compiled from `master`. A script in this repository takes the capture, and a CI job runs that script both on `workflow_dispatch` and on release. Use the standard `macos-14` runner when it accepts the job; otherwise run the same script on Linux under Xvfb. Mockups and renders that were not taken from that build are not allowed. Status badges are not pictures of the app.
+A picture of the OwnTerm window in the README, on GitHub Pages, or on a GitHub Release must be a capture of the real app compiled from `master`. `script/capture-ownterm.sh` takes it, and the release workflow runs that script on `workflow_dispatch` and on a tag, on the standard `ubuntu-22.04` runner under Xvfb (or `macos-14` when that runner accepts a macOS capture). Mockups and renders that were not taken from that build are not allowed. Status badges are not pictures of the app.
 
 ## TL;DR
 
