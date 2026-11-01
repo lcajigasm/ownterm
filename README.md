@@ -124,6 +124,12 @@ ownterm-tui configure-provider --provider ollama --model auto
 ownterm-tui auto --prompt "refactor the parser and then run the tests"
 ```
 
+## Agent tools
+
+A configured model can call five tools, and the terminal runs them on this machine. `run_shell_command` and `read_files` were already there. `grep` searches file contents, `file_glob` lists paths, and `apply_file_diffs` edits a file with search-and-replace, creates a file, or deletes one. The same confirmation path Warp uses for a diff still applies. There is no Warp-hosted code index: grep and glob do not call out.
+
+The model sees those names on the chat request. A later turn gets the tool result back (matching lines, paths, or whether the diff applied), so it can keep going without you pasting the output.
+
 ## Shortcuts
 
 Desktop app, from the fixed bindings in the client:
