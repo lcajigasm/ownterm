@@ -2,7 +2,7 @@
 
 OwnTerm es un fork del cliente Warp (Warp Services, Inc.). El núcleo del terminal sigue bajo AGPL-3.0 y MIT. OwnTerm no está afiliado a Warp. Esta matriz compara bloques del cliente upstream con el binario `ownterm` (`Channel::Oss`) en este repositorio.
 
-La evidencia de compilación del cliente completo es el release [v0.4.0](https://github.com/lcajigasm/ownterm/releases/tag/v0.4.0), que adjunta archivos para macOS arm64, macOS x86_64, Linux x86_64 y Windows x86_64. El CI de pull request audita la privacidad, prueba el instalador sin red, cubre `ownterm_provider` y los tests de canal, y ejecuta `cargo check` de `ownterm` y `ownterm-tui` en Linux. El empaquetado de las cuatro plataformas sigue siendo el workflow del tag.
+La evidencia de compilación del cliente completo es el release [v0.4.0](https://github.com/lcajigasm/ownterm/releases/tag/v0.4.0), que adjunta archivos para macOS arm64, macOS x86_64, Linux x86_64 y Windows x86_64. El CI de pull request audita la privacidad, prueba el instalador sin red, cubre `ownterm_provider` y los tests de canal, y ejecuta `cargo check` de `ownterm` y `ownterm-tui` en Linux. El empaquetado de las cuatro plataformas sigue siendo el workflow del tag, que también adjunta un `.dmg` con `OwnTerm.app`.
 
 ## Matriz
 

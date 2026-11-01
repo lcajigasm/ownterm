@@ -26,6 +26,8 @@ sha256sum -c SHA256SUMS --ignore-missing
 
 Use the asset name for your machine: `ownterm-macos-arm64`, `ownterm-macos-x86_64`, `ownterm-linux-x86_64`, or `ownterm-windows-x86_64`.
 
+On a Mac you can also open `ownterm-macos-universal.dmg` and drag `OwnTerm.app` to Applications. That app is the `ownterm` binary for both Apple Silicon and Intel. If the two builds cannot be combined, the release has `ownterm-macos-arm64.dmg` and `ownterm-macos-x86_64.dmg` instead. The `.tar.gz` archives stay on the release for this installer and for Homebrew. The disk image is not code-signed.
+
 ## First launch
 
 Start `ownterm`. There is no signup step. With no model configured, the prompt shows **No AI provider**. Settings opens on the agent page and leaves out billing, teams, and Warp Drive. The shell still runs.

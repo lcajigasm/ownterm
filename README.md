@@ -87,6 +87,7 @@ The day-to-day guide (first launch, `provider.env`, and local workflows) is [doc
 
 | Platform | Architecture | Package |
 | :--- | :--- | :--- |
+| **macOS** | Apple Silicon and Intel | [ownterm-macos-universal.dmg](https://github.com/lcajigasm/ownterm/releases/latest/download/ownterm-macos-universal.dmg) (`OwnTerm.app`) |
 | **macOS** | Apple Silicon (M1/M2/M3/M4) | [ownterm-macos-arm64.tar.gz](https://github.com/lcajigasm/ownterm/releases/latest/download/ownterm-macos-arm64.tar.gz) |
 | **macOS** | Intel (x86_64) | [ownterm-macos-x86_64.tar.gz](https://github.com/lcajigasm/ownterm/releases/latest/download/ownterm-macos-x86_64.tar.gz) |
 | **Linux** | x86_64 (glibc 2.31+) | [ownterm-linux-x86_64.tar.gz](https://github.com/lcajigasm/ownterm/releases/latest/download/ownterm-linux-x86_64.tar.gz) |
@@ -293,7 +294,7 @@ Pushing a tag `vX.Y.Z` runs [`.github/workflows/release.yml`](.github/workflows/
 - Linux (`x86_64-unknown-linux-gnu` on `ubuntu-22.04`)
 - Windows (`x86_64-pc-windows-msvc` on `windows-latest`)
 
-The workflow attaches the `.tar.gz` archives and `SHA256SUMS` to that tag. It does not create or force-push tags.
+The workflow attaches the `.tar.gz` archives, `ownterm-macos-universal.dmg` (`OwnTerm.app`), and `SHA256SUMS` to that tag. It does not create or force-push tags.
 
 ### 3. Manual version bump
 
