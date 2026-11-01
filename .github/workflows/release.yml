@@ -89,8 +89,8 @@ jobs:
       - name: Build OwnTerm GUI and TUI
         shell: bash
         run: |
-          cargo build --release --locked --target ${{ matrix.target }} \
-            --bin ownterm --bin ownterm-tui
+          cargo build --release --locked --target ${{ matrix.target }} -p warp --bin ownterm
+          cargo build --release --locked --target ${{ matrix.target }} -p warp_tui --bin ownterm-tui
 
       - name: Package Unix
         if: runner.os != 'Windows'
