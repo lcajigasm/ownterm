@@ -5,6 +5,10 @@ Thanks for helping improve Warp! This guide explains how to open issues, propose
 > [!TIP]
 > **Chat with us in Slack.** Connect with other contributors and the Warp team in the [`#oss-contributors`](https://warpcommunity.slack.com/archives/C0B0LM8N4DB) channel — a good place for ad-hoc questions, design discussion, and pairing with maintainers as you work through an issue or PR. New here? [Join the Warp Slack community](https://go.warp.dev/join-preview) first, then hop into `#oss-contributors`.
 
+## App screenshots
+
+A picture of the OwnTerm window in the README, on GitHub Pages, or on a GitHub Release must be a capture of the real app compiled from `master`. A script in this repository takes the capture, and a CI job runs that script both on `workflow_dispatch` and on release. Use the standard `macos-14` runner when it accepts the job; otherwise run the same script on Linux under Xvfb. Mockups and renders that were not taken from that build are not allowed. Status badges are not pictures of the app.
+
 ## TL;DR
 
 - Bug fixes are welcome once the report is actionable from the provided details or maintainer triage.

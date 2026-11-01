@@ -89,8 +89,8 @@ jobs:
       - name: Build OwnTerm GUI and TUI
         shell: bash
         run: |
-          cargo build --release --target ${{ matrix.target }} -p warp --bin ownterm
-          cargo build --release --target ${{ matrix.target }} -p warp_tui --bin ownterm-tui
+          cargo build --release --locked --target ${{ matrix.target }} \
+            --bin ownterm --bin ownterm-tui
 
       - name: Package Unix
         if: runner.os != 'Windows'
@@ -122,9 +122,71 @@ jobs:
             ${{ matrix.artifact_name }}.tar.gz
             ${{ matrix.artifact_name }}.tar.gz.sha256
 
+  macos-dmg:
+    name: Package macOS DMG
+    needs: build
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.sha }}
+
+      - name: Download macOS archives
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ownterm-macos-*
+          path: release-artifacts
+
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Refusing non-semver tag: $TAG" >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Build OwnTerm.app disk image
+        shell: bash
+        run: |
+          mkdir -p extract/arm64 extract/x86_64 dist
+          tar -xzf release-artifacts/ownterm-macos-arm64/ownterm-macos-arm64.tar.gz -C extract/arm64
+          tar -xzf release-artifacts/ownterm-macos-x86_64/ownterm-macos-x86_64.tar.gz -C extract/x86_64
+          test -s extract/arm64/ownterm
+          test -s extract/x86_64/ownterm
+          version="${{ steps.tag.outputs.tag }}"
+          version="${version#v}"
+          bash script/package-macos-dmg.sh \
+            --arm64 extract/arm64/ownterm \
+            --x86_64 extract/x86_64/ownterm \
+            --icon app/channels/oss/icon/no-padding/512x512.png \
+            --version "$version" \
+            --out-dir dist
+          shopt -s nullglob
+          dmgs=(dist/*.dmg)
+          if (( ${#dmgs[@]} == 0 )); then
+            echo "packaging produced no disk image" >&2
+            exit 1
+          fi
+
+      - name: Upload disk image
+        uses: actions/upload-artifact@v4
+        with:
+          name: ownterm-macos-dmg
+          path: |
+            dist/*.dmg
+            dist/*.dmg.sha256
+
   publish:
     name: Publish GitHub Release
-    needs: build
+    needs: [build, macos-dmg]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -154,9 +216,18 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          find release-artifacts -type f -name "*.tar.gz" -exec cp {} dist/ \;
-          find release-artifacts -type f -name "*.sha256" -exec cat {} + > dist/SHA256SUMS
+          find release-artifacts -type f \( -name "*.tar.gz" -o -name "*.dmg" \) -exec cp {} dist/ \;
+          find release-artifacts -type f -name "*.sha256" -print0 | sort -z | xargs -0 -r cat > dist/SHA256SUMS
           cat dist/SHA256SUMS
+          test -f dist/ownterm-macos-arm64.tar.gz
+          test -f dist/ownterm-macos-x86_64.tar.gz
+          test -f dist/ownterm-linux-x86_64.tar.gz
+          test -f dist/ownterm-windows-x86_64.tar.gz
+          if ! grep -q 'ownterm-macos-universal.dmg' dist/SHA256SUMS \
+            && ! grep -q 'ownterm-macos-arm64.dmg' dist/SHA256SUMS; then
+            echo "SHA256SUMS has no macOS disk image" >&2
+            exit 1
+          fi
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
@@ -172,4 +243,6 @@ jobs:
             Open-source, local-first terminal. No Warp account, no telemetry upload.
 
             Archives include `ownterm` and `ownterm-tui` for macOS (arm64 and x86_64), Linux x86_64, and Windows x86_64.
+            macOS also has `ownterm-macos-universal.dmg` (`OwnTerm.app`, arm64 and x86_64) when the two builds combine, or one `.dmg` per architecture otherwise.
+            The `.tar.gz` archives stay on the release for the installer and Homebrew.
             Verify downloads with `SHA256SUMS`.

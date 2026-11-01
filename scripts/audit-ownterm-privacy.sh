@@ -114,6 +114,13 @@ require app/src/settings_view/mod.rs "fn local_settings_nav"
 require .github/workflows/ci.yml "cargo check -p warp --bin ownterm"
 require .github/workflows/ci.yml "cargo check -p warp_tui --bin ownterm-tui"
 require .github/workflows/ci.yml "bash script/test_install_ownterm.sh"
+require .github/workflows/ci.yml "bash script/test_package_macos_dmg.sh"
+require .github/workflows/release.yml "ownterm-macos-universal.dmg"
+require .github/workflows/release.yml "script/package-macos-dmg.sh"
+require .github/workflows/release.yml "ownterm-macos-arm64.tar.gz"
+require docs/usage.md "ownterm-macos-universal.dmg"
+require docs/usage.md "OwnTerm.app"
+require script/package-macos-dmg.sh "OwnTerm.app"
 
 if grep -n -E 'releases\.warp\.dev|rudderstack|sentry\.io|segment\.(com|io)|warp\.dev' \
   script/install-ownterm.sh docs/usage.md; then

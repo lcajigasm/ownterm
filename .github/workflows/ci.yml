@@ -57,6 +57,9 @@ jobs:
       - name: Test release installer
         run: bash script/test_install_ownterm.sh
 
+      - name: Test macOS disk image layout
+        run: bash script/test_package_macos_dmg.sh
+
   client-check:
     name: Client compile
     runs-on: ubuntu-22.04
