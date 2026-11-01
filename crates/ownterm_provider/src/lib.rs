@@ -1,7 +1,12 @@
 //! Resolves an OpenAI-compatible chat endpoint for OwnTerm.
 //!
-//! API keys are read only from `OWNTERM_API_KEY`. A provider file may name the
-//! provider, base URL, and model, and is rejected if it contains a secret.
+//! API keys are read from the environment variable named by the provider file
+//! (`OWNTERM_API_KEY` when the file does not name one). The file may name the
+//! provider, base URL, model, and that variable, and is rejected if it contains a secret.
+
+mod form;
+
+pub use form::{ProviderForm, load_provider_form, model_choices, save_provider_form};
 
 use anyhow::{Context, anyhow, bail};
 use url::Url;
@@ -91,6 +96,8 @@ pub struct ProviderInputs {
     pub base_url: Option<String>,
     pub model: Option<String>,
     pub api_key: Option<String>,
+    /// Environment variable that holds the key. The file stores this name, not the key.
+    pub api_key_env: Option<String>,
 }
 
 pub fn presets() -> &'static [ProviderPreset] {
@@ -125,11 +132,16 @@ pub fn direct_inference_configured() -> bool {
 
 pub fn resolve_from_process_env() -> anyhow::Result<Option<ResolvedEndpoint>> {
     let file = read_provider_file()?;
+    let api_key_env = file
+        .as_ref()
+        .and_then(|file| file.api_key_env.clone())
+        .unwrap_or_else(|| ENV_API_KEY.to_owned());
     let inputs = ProviderInputs {
         provider: env_or(ENV_PROVIDER, file.as_ref().and_then(|f| f.provider.clone())),
         base_url: env_or(ENV_BASE_URL, file.as_ref().and_then(|f| f.base_url.clone())),
         model: env_or(ENV_MODEL, file.as_ref().and_then(|f| f.model.clone())),
-        api_key: nonempty_owned(std::env::var(ENV_API_KEY).ok()),
+        api_key: nonempty_owned(std::env::var(&api_key_env).ok()),
+        api_key_env: Some(api_key_env),
     };
     if inputs.provider.is_none() && inputs.base_url.is_none() && inputs.model.is_none() {
         return Ok(None);
@@ -159,7 +171,12 @@ pub fn resolve(inputs: &ProviderInputs) -> anyhow::Result<ResolvedEndpoint> {
     let api_key = nonempty(inputs.api_key.as_deref()).map(str::to_owned);
     if preset.is_some_and(|preset| preset.requires_api_key) && api_key.is_none() {
         let id = preset.map(|preset| preset.id).unwrap_or("provider");
-        bail!("OWNTERM_API_KEY is required for the {id} provider");
+        let env_name = inputs
+            .api_key_env
+            .as_deref()
+            .filter(|name| !name.is_empty())
+            .unwrap_or(ENV_API_KEY);
+        bail!("set {env_name} in the environment for the {id} provider; the key is not stored");
     }
     Ok(ResolvedEndpoint {
         provider_id: preset
@@ -289,6 +306,10 @@ pub fn write_provider_file(
     base_url: Option<&str>,
 ) -> anyhow::Result<()> {
     let text = format_provider_file(provider, model, base_url)?;
+    write_provider_text(path, text)
+}
+
+pub(crate) fn write_provider_text(path: &std::path::Path, text: String) -> anyhow::Result<()> {
     if let Some(parent) = path.parent()
         && !parent.as_os_str().is_empty()
     {
@@ -321,8 +342,32 @@ fn validate_provider_token(key: &str, value: &str) -> anyhow::Result<String> {
         || lower.contains("apikey")
         || lower.contains("token")
         || lower.contains("secret")
+        || lower.starts_with("sk-")
+        || lower.starts_with("sk_")
+        || lower.starts_with("xai-")
+        || lower.starts_with("gsk_")
+        || lower.starts_with("bearer ")
     {
         bail!("{key} must not carry a secret; set {ENV_API_KEY} in the environment");
+    }
+    Ok(value.to_owned())
+}
+
+pub(crate) fn validate_env_var_name(value: &str) -> anyhow::Result<String> {
+    let value = value.trim();
+    let valid = !value.is_empty()
+        && value.len() <= 64
+        && value.chars().enumerate().all(|(index, ch)| {
+            if index == 0 {
+                ch.is_ascii_alphabetic() || ch == '_'
+            } else {
+                ch.is_ascii_alphanumeric() || ch == '_'
+            }
+        });
+    if !valid {
+        bail!(
+            "name the environment variable that holds the API key, for example {ENV_API_KEY}; do not paste the key"
+        );
     }
     Ok(value.to_owned())
 }
@@ -332,9 +377,10 @@ struct ProviderFile {
     provider: Option<String>,
     base_url: Option<String>,
     model: Option<String>,
+    api_key_env: Option<String>,
 }
 
-fn parse_provider_file(text: &str) -> anyhow::Result<ProviderFile> {
+pub(crate) fn parse_provider_file(text: &str) -> anyhow::Result<ProviderFile> {
     let mut file = ProviderFile::default();
     for (index, raw) in text.lines().enumerate() {
         let line = raw.trim();
@@ -353,6 +399,7 @@ fn parse_provider_file(text: &str) -> anyhow::Result<ProviderFile> {
             "provider" => file.provider = Some(value),
             "base_url" => file.base_url = Some(value),
             "model" => file.model = Some(value),
+            "api_key_env" => file.api_key_env = Some(validate_env_var_name(&value)?),
             "api_key" | "apikey" | "token" | "secret" => {
                 bail!(
                     "{key} must not be stored in the provider file; set {ENV_API_KEY} or the OS keychain"
@@ -474,6 +521,7 @@ mod tests {
             base_url: Some("https://example.test/v1".into()),
             model: Some("gpt-4o".into()),
             api_key: Some("sk-test".into()),
+            api_key_env: None,
         })
         .unwrap();
         assert_eq!(

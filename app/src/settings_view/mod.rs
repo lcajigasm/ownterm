@@ -104,6 +104,7 @@ mod main_page;
 pub mod mcp_servers;
 pub mod mcp_servers_page;
 mod nav;
+mod ownterm_provider_form;
 pub mod pane_manager;
 mod platform;
 mod platform_page;

@@ -691,6 +691,7 @@ pub struct WarpAgentPageView {
     /// Identifies the ChatGPT connect attempt this page started, if one is in
     /// flight, so a stale timeout can't cancel a newer attempt.
     chatgpt_oauth_attempt: Option<Uuid>,
+    ownterm_provider_form: ViewHandle<super::ownterm_provider_form::OwnTermProviderFormView>,
 }
 
 impl WarpAgentPageView {
@@ -1211,6 +1212,9 @@ impl WarpAgentPageView {
             );
         }
 
+        let ownterm_provider_form =
+            ctx.add_typed_action_view(super::ownterm_provider_form::OwnTermProviderFormView::new);
+
         Self {
             page: Self::build_page(ctx),
             self_handle,
@@ -1241,6 +1245,7 @@ impl WarpAgentPageView {
             #[cfg(not(target_family = "wasm"))]
             grok_code_editor,
             chatgpt_oauth_attempt: None,
+            ownterm_provider_form,
         }
     }
 
@@ -2424,6 +2429,13 @@ impl WarpAgentPageView {
             ));
         }
 
+        if ChannelState::channel() == warp_core::channel::Channel::Oss {
+            categories.insert(
+                0,
+                Category::new("Local provider", vec![Box::new(OwnTermProviderFormWidget)]),
+            );
+        }
+
         let global_ai_switch_state = SwitchStateHandle::default();
         let global_ai_sign_up_button = MouseStateHandle::default();
         PageType::new_categorized(
@@ -3311,7 +3323,7 @@ fn render_global_ai_toggle(
                 Container::new(
                     ConstrainedBox::new(
                         Text::new_inline(
-                            "No AI provider configured. Run ownterm-tui configure-provider, or set OWNTERM_PROVIDER and OWNTERM_MODEL.",
+                            "No AI provider configured. Use Local provider on this page, or run ownterm-tui configure-provider.",
                             appearance.ui_font_family(),
                             14.,
                         )
@@ -3417,6 +3429,25 @@ fn render_active_ai_toggle(toggle: &SwitchStateHandle, app: &AppContext) -> Box<
     ))
     .with_padding_right(TOGGLE_BUTTON_RIGHT_PADDING)
     .finish()
+}
+
+struct OwnTermProviderFormWidget;
+
+impl SettingsWidget for OwnTermProviderFormWidget {
+    type View = WarpAgentPageView;
+
+    fn search_terms(&self) -> &str {
+        "local provider model base url environment variable ownterm"
+    }
+
+    fn render(
+        &self,
+        view: &Self::View,
+        _appearance: &Appearance,
+        _app: &AppContext,
+    ) -> Box<dyn Element> {
+        ChildView::new(&view.ownterm_provider_form).finish()
+    }
 }
 
 #[derive(Default)]
