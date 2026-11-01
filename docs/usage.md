@@ -34,7 +34,7 @@ You can leave the model unset and use OwnTerm as a terminal. Set a provider when
 
 ## Provider
 
-`OWNTERM_MODEL` is required for agent requests. Environment variables override `~/.ownterm/provider.env`. The file accepts `provider`, `model`, and `base_url`. It is rejected if it contains `api_key`, `token`, or `secret`. Put a cloud key in `OWNTERM_API_KEY` or type it into Settings so it stays in the OS keychain.
+`OWNTERM_MODEL` is required for agent requests. Environment variables override `~/.ownterm/provider.env`. The file accepts `provider`, `model`, `base_url`, and optionally `api_key_env`. It is rejected if it contains `api_key`, `token`, or `secret`. Put a cloud key in the environment variable named by `api_key_env` (default `OWNTERM_API_KEY`).
 
 The installer can write the non-secret fields:
 
@@ -54,6 +54,8 @@ model=llama3.3
 ```bash
 ownterm-tui configure-provider --provider ollama --model llama3.3
 ```
+
+Settings does the same write. Open Settings, stay on Warp Agent, and use **Local provider**. The provider and model lists are the ones `ownterm-tui models` prints. Base URL can stay on the preset default. The API key field is only the environment variable name (`OWNTERM_API_KEY` unless you set another). A different name is stored as `api_key_env`. The key itself is never written. Validation errors stay on that form.
 
 `ownterm-tui models --provider ollama` prints suggested model ids and the catalog URL for that endpoint (`/models`). It does not download the catalog. Pass `--base-url` when the preset needs one, or to point at your own server.
 

@@ -2,14 +2,14 @@
 
 OwnTerm es un fork del cliente Warp (Warp Services, Inc.). El núcleo del terminal sigue bajo AGPL-3.0 y MIT. OwnTerm no está afiliado a Warp. Esta matriz compara bloques del cliente upstream con el binario `ownterm` (`Channel::Oss`) en este repositorio.
 
-La evidencia de compilación del cliente completo es el release [v0.3.0](https://github.com/lcajigasm/ownterm/releases/tag/v0.3.0), que adjunta archivos para macOS arm64, macOS x86_64, Linux x86_64 y Windows x86_64. El CI de pull request audita la privacidad, prueba el instalador sin red, cubre `ownterm_provider` y los tests de canal, y ejecuta `cargo check` de `ownterm` y `ownterm-tui` en Linux. El empaquetado de las cuatro plataformas sigue siendo el workflow del tag.
+La evidencia de compilación del cliente completo es el release [v0.4.0](https://github.com/lcajigasm/ownterm/releases/tag/v0.4.0), que adjunta archivos para macOS arm64, macOS x86_64, Linux x86_64 y Windows x86_64. El CI de pull request audita la privacidad, prueba el instalador sin red, cubre `ownterm_provider` y los tests de canal, y ejecuta `cargo check` de `ownterm` y `ownterm-tui` en Linux. El empaquetado de las cuatro plataformas sigue siendo el workflow del tag.
 
 ## Matriz
 
 | Pri. | Bloque | En Warp | En OwnTerm ahora | Hueco |
 | :--- | :--- | :--- | :--- | :--- |
 | P0 | Telemetría y crashes | RudderStack y Sentry en los canales de producto | Los macros no evalúan el evento si el canal no puede transmitir. `record_event` no construye ni encola nada salvo un opt-in de test. Sentry no arranca sin DSN | Quedan los tipos y los literales en el fuente. No se ejecutan en los binarios de OwnTerm |
-| P0 | Cuenta y suscripción | Login obligatorio y créditos de IA | Sin proveedor, el chip y Ajustes muestran «No AI provider». `ownterm-tui configure-provider` escribe `provider.env` (preset, modelo, endpoint) sin guardar la clave. En OSS, Ajustes abre en el agente | El formulario dentro de la ventana de Ajustes sigue sin existir |
+| P0 | Cuenta y suscripción | Login obligatorio y créditos de IA | Sin proveedor, el chip muestra «No AI provider». En OSS, Ajustes abre en el agente y **Local provider** escribe `provider.env` (preset, modelo de la lista local, endpoint y el nombre `api_key_env`). La clave no se guarda | La descarga en vivo del catálogo `/models` sigue fuera del formulario |
 | P0 | Proveedores de IA | Inferencia en los servidores de Warp | `Channel::Oss` usa `ownterm_openai` contra `/chat/completions`. Presets: Ollama, LM Studio, vLLM, LocalAI, OpenAI, xAI, OpenRouter, Groq y compatible. `suggested_models` y `parse_model_ids` cubren un catálogo estático y un documento `/models`. `ownterm-tui models` imprime sugerencias y la URL. Herramientas `run_shell_command` y `read_files` | No hay adaptadores nativos de Anthropic ni Google. El comando no descarga el catálogo. Faltan más herramientas del agente Warp |
 | P1 | Bloques, pestañas, paneles, temas | Sí | El código del cliente sigue en `app/` y se empaqueta en `ownterm` | No hay una pasada de verificación visual en esta tanda. Identidad visual todavía mezcla recursos upstream |
 | P1 | Autocompletado y workflows | Sí, parte acoplada a Warp Drive y a la nube | La búsqueda de comandos incluye workflows de `~/.ownterm/workflows` sin Drive. El menú `/` inserta esos workflows. La guía de uso trae un YAML de ejemplo. El palette busca archivos locales | Los workflows de agente en la nube y el catálogo de Drive siguen apagados. No hay editor visual para crear el YAML |
@@ -32,4 +32,4 @@ La evidencia de compilación del cliente completo es el release [v0.3.0](https:/
 
 1. Pasada visual de bloques, pestañas, paneles y temas: la identidad sigue mezclando recursos de Warp.
 2. Firma y notarización de los binarios. El instalador comprueba `SHA256SUMS`; Gatekeeper y SmartScreen siguen avisando.
-3. Formulario en la ventana de Ajustes para escribir `provider.env`, y descarga en vivo del catálogo `/models` del endpoint del usuario.
+3. Descarga en vivo del catálogo `/models` del endpoint del usuario. El formulario ya ofrece la lista local.
