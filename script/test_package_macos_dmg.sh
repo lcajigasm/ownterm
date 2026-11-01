@@ -49,6 +49,8 @@ for needle in \
   "ownterm-windows-x86_64" \
   "script/package-macos-dmg.sh" \
   "ownterm-macos-universal.dmg" \
+  "-p warp --bin ownterm" \
+  "-p warp_tui --bin ownterm-tui" \
   "SHA256SUMS"; do
   if ! grep -F -q -- "$needle" "$release_yml"; then
     fail "release.yml is missing $needle"
