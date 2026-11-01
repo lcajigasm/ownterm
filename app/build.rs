@@ -477,7 +477,7 @@ fn embed_resource_file(target_dir: &Path) {
     // channel icon (the upstream mark) would be embedded in ownterm.exe.
     let icon_path = env::var("OWNTERM_WINDOWS_ICON")
         .map(PathBuf::from)
-        .unwrap_or_else(|| {
+        .unwrap_or_else(|_| {
             if bin_name == "ownterm" {
                 PathBuf::from("channels/oss/icon/no-padding/icon.ico")
             } else {
