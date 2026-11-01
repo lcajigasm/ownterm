@@ -36,7 +36,7 @@ You can leave the model unset and use OwnTerm as a terminal. Set a provider when
 
 ## Provider
 
-`OWNTERM_MODEL` is required for agent requests. Environment variables override `~/.ownterm/provider.env`. The file accepts `provider`, `model`, `base_url`, and optionally `api_key_env`. It is rejected if it contains `api_key`, `token`, or `secret`. Put a cloud key in the environment variable named by `api_key_env` (default `OWNTERM_API_KEY`).
+`OWNTERM_MODEL` is required for agent requests. `auto` chooses the cheapest available catalog model for the prompt; see the README section "Auto mode". Environment variables override `~/.ownterm/provider.env`. The file accepts `provider`, `model`, `base_url`, and optionally `api_key_env`. It is rejected if it contains `api_key`, `token`, or `secret`. Put a cloud key in the environment variable named by `api_key_env` (default `OWNTERM_API_KEY`).
 
 The installer can write the non-secret fields:
 

@@ -128,6 +128,18 @@ mod tests {
         assert_eq!(loaded.base_url, "");
         assert_eq!(loaded.api_key_env, ENV_API_KEY);
         assert_eq!(model_choices("ollama"), suggested_models("ollama"));
+        let auto = ProviderForm {
+            provider: "ollama".into(),
+            model: crate::AUTO_MODEL.into(),
+            base_url: String::new(),
+            api_key_env: ENV_API_KEY.into(),
+        };
+        let auto_text = provider_form_to_text(&auto).unwrap();
+        assert!(auto_text.contains("model=auto\n"));
+        assert_eq!(
+            provider_form_from_text(&auto_text).unwrap().model,
+            crate::AUTO_MODEL
+        );
         std::fs::remove_dir_all(path.parent().unwrap()).ok();
     }
 

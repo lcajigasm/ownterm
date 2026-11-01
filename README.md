@@ -76,7 +76,7 @@ Check `SHA256SUMS` on the release before you open an unsigned archive. From a ch
 
 ## Providers
 
-`OWNTERM_MODEL` is required before an agent request. Environment variables override `~/.ownterm/provider.env`. The file may contain `provider`, `model`, `base_url`, and optionally `api_key_env`. It is rejected if it contains `api_key`, `token`, or `secret`. Put a cloud key in the environment variable named by `api_key_env` (default `OWNTERM_API_KEY`). The key is never written to the file.
+A model id is required before an agent request. `auto` asks OwnTerm to choose. Environment variables override `~/.ownterm/provider.env`. The file may contain `provider`, `model`, `base_url`, and optionally `api_key_env`. It is rejected if it contains `api_key`, `token`, or `secret`. Put a cloud key in the environment variable named by `api_key_env` (default `OWNTERM_API_KEY`). The key is never written to the file.
 
 ```bash
 ownterm-tui configure-provider --provider ollama --model llama3.3
@@ -106,6 +106,23 @@ ownterm
 ```
 
 For a cloud provider, export `OWNTERM_API_KEY` in the environment. Do not put the key in the command line of a shared note. Workflows in `~/.ownterm/workflows` show up in command search and the `/` menu. They are files on this machine. The longer guide is [docs/usage.md](docs/usage.md).
+
+## Auto mode
+
+Set the model to `auto` (Settings, or `model=auto` in `provider.env`). OwnTerm classifies the prompt on this machine, then picks the cheapest catalog model that is actually available and meets that task. Warp's custom model routers are a different feature: they send a YAML map to Warp's servers. Auto does not.
+
+Availability is local and free of paid API calls. A cloud provider counts when its key variable is set. The provider named in `provider.env` also accepts `OWNTERM_API_KEY` or the file's `api_key_env`. Other clouds use `OWNTERM_OPENAI_API_KEY`, `OWNTERM_XAI_API_KEY`, `OWNTERM_OPENROUTER_API_KEY`, or `OWNTERM_GROQ_API_KEY`. A local preset counts when its loopback port accepts a connection. The key itself is never stored.
+
+The classifier is fixed: a one-line shell command, a short chat, an agent request (implement, refactor, numbered steps, and similar), or a long context (a long paste, a large code fence, or a diff). Agent tasks require tool calling. Long context requires a code-capable model and a larger window. Prices, context, and capabilities live in `crates/ownterm_provider/catalog.json`, dated `priced_on`. Local models cost $0. Rows marked approximate are not a vendor's current price table.
+
+If the chosen call fails with an error, a rate limit, or a timeout before any output, Auto tries the next candidate. The transcript starts with one line naming the model and why. Settings shows the same kind of line for a short chat, plus any session pin.
+
+A session pin overrides Auto. In Settings, the session field takes `provider/model` (`openrouter/openai/gpt-4o-mini` for the OpenRouter row). `auto` or an empty field clears it. The same pin is `ownterm-tui pin-model openai/gpt-4o-mini`, and `ownterm-tui auto --prompt "git status"` prints the ranking without calling a model.
+
+```bash
+ownterm-tui configure-provider --provider ollama --model auto
+ownterm-tui auto --prompt "refactor the parser and then run the tests"
+```
 
 ## Shortcuts
 

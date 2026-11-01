@@ -34,9 +34,11 @@ pub(crate) struct OwnTermProviderFormView {
     base_url_editor: ViewHandle<EditorView>,
     api_key_env_editor: ViewHandle<EditorView>,
     save_button: ViewHandle<ActionButton>,
+    session_editor: ViewHandle<EditorView>,
     provider: String,
     model: String,
     custom_model: bool,
+    auto_line: String,
     notice: Option<FormNotice>,
 }
 
@@ -44,7 +46,8 @@ impl OwnTermProviderFormView {
     pub fn new(ctx: &mut ViewContext<Self>) -> Self {
         let (form, notice) = loaded_form();
         let choices = model_choices(&form.provider);
-        let custom_model = !choices.iter().any(|id| *id == form.model);
+        let custom_model = form.model != ownterm_provider::AUTO_MODEL
+            && !choices.iter().any(|id| *id == form.model);
         let displayed_base_url = if form.base_url.is_empty() {
             ownterm_provider::find_preset(&form.provider)
                 .and_then(|preset| preset.default_base_url)
@@ -99,6 +102,9 @@ impl OwnTermProviderFormView {
             single_line_editor("https://example.com/v1", &displayed_base_url, ctx);
         let api_key_env_editor =
             single_line_editor(ownterm_provider::ENV_API_KEY, &form.api_key_env, ctx);
+        let session_pin = ownterm_provider::read_session_pin_text();
+        let auto_line = ownterm_provider::settings_line(&form.provider, &form.model, &session_pin);
+        let session_editor = single_line_editor("provider/model", &session_pin, ctx);
         let save_button = ctx.add_typed_action_view(|_| {
             ActionButton::new("Save provider", PrimaryTheme)
                 .with_size(ButtonSize::Small)
@@ -114,9 +120,11 @@ impl OwnTermProviderFormView {
             base_url_editor,
             api_key_env_editor,
             save_button,
+            session_editor,
             provider,
             model,
             custom_model,
+            auto_line,
             notice,
         }
     }
@@ -167,6 +175,12 @@ impl View for OwnTermProviderFormView {
         column.add_child(ChildView::new(&self.provider_dropdown).finish());
         column.add_child(field_label(appearance, "Model"));
         column.add_child(ChildView::new(&self.model_dropdown).finish());
+        column.add_child(notice_line(appearance, &self.auto_line, false));
+        column.add_child(field_label(
+            appearance,
+            "Session model. Empty follows the default. Auto clears the pin.",
+        ));
+        column.add_child(text_field(appearance, &self.session_editor));
         if self.custom_model {
             column.add_child(text_field(appearance, &self.model_editor));
         }
@@ -203,7 +217,10 @@ impl TypedActionView for OwnTermProviderFormView {
                 self.retarget_base_url(provider, ctx);
                 self.provider = provider.clone();
                 let choices = model_choices(&self.provider);
-                if !self.custom_model && !choices.iter().any(|id| *id == self.model) {
+                if self.model != ownterm_provider::AUTO_MODEL
+                    && !self.custom_model
+                    && !choices.iter().any(|id| *id == self.model)
+                {
                     match choices.first() {
                         Some(first) => self.model = (*first).to_owned(),
                         None => {
@@ -226,6 +243,7 @@ impl TypedActionView for OwnTermProviderFormView {
             }
             OwnTermProviderAction::Save => self.save(ctx),
         }
+        self.refresh_auto_line(ctx);
         ctx.notify();
     }
 }
@@ -237,12 +255,17 @@ impl OwnTermProviderFormView {
         } else {
             self.model.clone()
         };
+        let session_pin = self.session_editor.as_ref(ctx).buffer_text(ctx);
         let form = ProviderForm {
             provider: self.provider.clone(),
             model,
             base_url: self.base_url_editor.as_ref(ctx).buffer_text(ctx),
             api_key_env: self.api_key_env_editor.as_ref(ctx).buffer_text(ctx),
         };
+        if let Err(message) = ownterm_provider::normalize_pin(session_pin.trim()) {
+            self.notice = Some(FormNotice::Error(message));
+            return;
+        }
         let path = match ownterm_provider::default_provider_file_path() {
             Ok(path) => path,
             Err(err) => {
@@ -252,6 +275,10 @@ impl OwnTermProviderFormView {
         };
         match ownterm_provider::save_provider_form(&path, &form) {
             Ok(()) => {
+                if let Err(message) = ownterm_provider::write_session_pin(session_pin.trim()) {
+                    self.notice = Some(FormNotice::Error(message));
+                    return;
+                }
                 self.model = form.model.trim().to_owned();
                 let env_name = form.api_key_env.trim();
                 self.notice = Some(FormNotice::Saved(format!(
@@ -261,6 +288,12 @@ impl OwnTermProviderFormView {
             }
             Err(message) => self.notice = Some(FormNotice::Error(message)),
         }
+    }
+
+    fn refresh_auto_line(&mut self, ctx: &mut ViewContext<Self>) {
+        let session_pin = self.session_editor.as_ref(ctx).buffer_text(ctx);
+        self.auto_line =
+            ownterm_provider::settings_line(&self.provider, &self.model, session_pin.trim());
     }
 }
 
@@ -280,18 +313,28 @@ fn model_dropdown_items(
     model: &str,
 ) -> (Vec<DropdownItem<OwnTermProviderAction>>, usize) {
     let models = model_choices(provider);
-    let mut items: Vec<_> = models
-        .iter()
-        .map(|id| DropdownItem::new(*id, OwnTermProviderAction::SelectModel((*id).to_owned())))
-        .collect();
+    let mut items = vec![DropdownItem::new(
+        "Auto",
+        OwnTermProviderAction::SelectModel(ownterm_provider::AUTO_MODEL.to_owned()),
+    )];
+    items.extend(
+        models
+            .iter()
+            .map(|id| DropdownItem::new(*id, OwnTermProviderAction::SelectModel((*id).to_owned()))),
+    );
     items.push(DropdownItem::new(
         "Custom",
         OwnTermProviderAction::SelectCustomModel,
     ));
-    let selected = models
-        .iter()
-        .position(|id| *id == model)
-        .unwrap_or(items.len() - 1);
+    let selected = if model == ownterm_provider::AUTO_MODEL {
+        0
+    } else {
+        models
+            .iter()
+            .position(|id| *id == model)
+            .map(|index| index + 1)
+            .unwrap_or(items.len() - 1)
+    };
     (items, selected)
 }
 
