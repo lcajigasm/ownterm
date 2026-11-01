@@ -8,8 +8,11 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 use uuid::Uuid;
 use warp_multi_agent_api::client_action::{AddMessagesToTask, AppendToMessageContent};
+use warp_multi_agent_api::message::tool_call::apply_file_diffs::{DeleteFile, FileDiff, NewFile};
 use warp_multi_agent_api::message::tool_call::read_files::File as ReadFilesFile;
-use warp_multi_agent_api::message::tool_call::{ReadFiles, RunShellCommand, Tool};
+use warp_multi_agent_api::message::tool_call::{
+    ApplyFileDiffs, FileGlobV2, Grep, ReadFiles, RunShellCommand, Tool,
+};
 use warp_multi_agent_api::message::tool_call_result::Result as ToolResult;
 use warp_multi_agent_api::message::{AgentOutput, Message as MessageKind, ToolCall};
 use warp_multi_agent_api::response_event::{StreamFinished, StreamInit, stream_finished};
@@ -422,43 +425,17 @@ impl OpenAiCompatibleConfig {
 }
 
 fn ownterm_tools() -> Vec<ToolDefinition> {
-    vec![
-        ToolDefinition {
+    ownterm_provider::local_agent_tool_specs()
+        .into_iter()
+        .map(|spec| ToolDefinition {
             r#type: "function",
             function: FunctionDefinition {
-                name: "run_shell_command",
-                description: "Execute a shell command in the user's terminal environment.",
-                parameters: serde_json::json!({
-                    "type": "object",
-                    "properties": {
-                        "command": {
-                            "type": "string",
-                            "description": "The exact shell command line string to execute."
-                        }
-                    },
-                    "required": ["command"]
-                }),
+                name: spec.name,
+                description: spec.description,
+                parameters: spec.parameters,
             },
-        },
-        ToolDefinition {
-            r#type: "function",
-            function: FunctionDefinition {
-                name: "read_files",
-                description: "Read the contents of one or more files in the workspace.",
-                parameters: serde_json::json!({
-                    "type": "object",
-                    "properties": {
-                        "files": {
-                            "type": "array",
-                            "items": { "type": "string" },
-                            "description": "The list of file paths to read."
-                        }
-                    },
-                    "required": ["files"]
-                }),
-            },
-        },
-    ]
+        })
+        .collect()
 }
 
 fn resolve_system_prompt() -> Option<String> {
@@ -489,7 +466,7 @@ fn resolve_system_prompt() -> Option<String> {
     }
 
     Some(
-        "You are OwnTerm, an open-source, local-first terminal assistant. You assist with coding, debugging, and terminal operations. Use available tools when appropriate."
+        "You are OwnTerm, an open-source, local-first terminal assistant. You assist with coding, debugging, and terminal operations. Use the tools on this machine: run_shell_command, read_files, grep, file_glob, and apply_file_diffs. Search with grep or file_glob. Change a file with apply_file_diffs instead of printing a patch."
             .to_owned(),
     )
 }
@@ -517,52 +494,69 @@ fn parse_streaming_chunk(data: &str) -> anyhow::Result<Option<ParsedChunk>> {
 }
 
 fn map_pending_tool_to_proto(name: &str, arguments_json: &str) -> Option<Tool> {
-    let args: serde_json::Value =
-        serde_json::from_str(arguments_json).unwrap_or(serde_json::Value::Null);
-    match name {
-        "run_shell_command" | "execute_command" | "bash" | "shell" => {
-            let command = args
-                .get("command")
-                .and_then(|v| v.as_str())
-                .or_else(|| args.get("cmd").and_then(|v| v.as_str()))
-                .unwrap_or_else(|| arguments_json.trim())
-                .to_owned();
-            Some(Tool::RunShellCommand(RunShellCommand {
-                command,
-                ..Default::default()
-            }))
-        }
-        "read_files" | "read_file" => {
-            let mut file_names = Vec::new();
-            if let Some(files) = args.get("files").and_then(|v| v.as_array()) {
-                for f in files {
-                    if let Some(s) = f.as_str() {
-                        file_names.push(s.to_owned());
-                    }
-                }
-            } else if let Some(path) = args.get("path").and_then(|v| v.as_str()) {
-                file_names.push(path.to_owned());
-            } else if let Some(path) = args.get("file_path").and_then(|v| v.as_str()) {
-                file_names.push(path.to_owned());
-            }
-            if file_names.is_empty() && !arguments_json.trim().is_empty() {
-                file_names.push(arguments_json.trim().to_owned());
-            }
-            Some(Tool::ReadFiles(ReadFiles {
-                files: file_names
-                    .into_iter()
-                    .map(|name| ReadFilesFile {
-                        name,
-                        line_ranges: Vec::new(),
-                    })
-                    .collect(),
-            }))
-        }
-        _ => Some(Tool::RunShellCommand(RunShellCommand {
+    let Some(tool) = ownterm_provider::parse_local_agent_tool(name, arguments_json) else {
+        return Some(Tool::RunShellCommand(RunShellCommand {
             command: format!("{name} {arguments_json}"),
             ..Default::default()
-        })),
-    }
+        }));
+    };
+    Some(match tool {
+        ownterm_provider::LocalAgentTool::Shell { command } => {
+            Tool::RunShellCommand(RunShellCommand {
+                command,
+                ..Default::default()
+            })
+        }
+        ownterm_provider::LocalAgentTool::ReadFiles { files } => Tool::ReadFiles(ReadFiles {
+            files: files
+                .into_iter()
+                .map(|name| ReadFilesFile {
+                    name,
+                    line_ranges: Vec::new(),
+                })
+                .collect(),
+        }),
+        ownterm_provider::LocalAgentTool::Grep { queries, path } => {
+            Tool::Grep(Grep { queries, path })
+        }
+        ownterm_provider::LocalAgentTool::Glob {
+            patterns,
+            search_dir,
+        } => Tool::FileGlobV2(FileGlobV2 {
+            patterns,
+            search_dir,
+            ..Default::default()
+        }),
+        ownterm_provider::LocalAgentTool::Edit {
+            summary,
+            replacements,
+            new_files,
+            deleted_files,
+        } => Tool::ApplyFileDiffs(ApplyFileDiffs {
+            summary,
+            diffs: replacements
+                .into_iter()
+                .map(|edit| FileDiff {
+                    file_path: edit.file_path,
+                    search: edit.search,
+                    replace: edit.replace,
+                })
+                .collect(),
+            new_files: new_files
+                .into_iter()
+                .map(|file| NewFile {
+                    file_path: file.file_path,
+                    content: file.content,
+                    allow_overwrite: false,
+                })
+                .collect(),
+            deleted_files: deleted_files
+                .into_iter()
+                .map(|file_path| DeleteFile { file_path })
+                .collect(),
+            ..Default::default()
+        }),
+    })
 }
 
 fn build_chat_messages(tasks: &[warp_multi_agent_api::Task], prompt: &str) -> Vec<ChatMessage> {
@@ -611,10 +605,38 @@ fn build_chat_messages(tasks: &[warp_multi_agent_api::Task], prompt: &str) -> Ve
                                     .unwrap_or_default(),
                             )
                         }
+                        Some(Tool::Grep(grep)) => (
+                            "grep",
+                            serde_json::to_string(&serde_json::json!({
+                                "queries": grep.queries,
+                                "path": grep.path,
+                            }))
+                            .unwrap_or_default(),
+                        ),
+                        Some(Tool::FileGlobV2(glob)) => (
+                            "file_glob",
+                            serde_json::to_string(&serde_json::json!({
+                                "patterns": glob.patterns,
+                                "search_dir": glob.search_dir,
+                            }))
+                            .unwrap_or_default(),
+                        ),
                         Some(Tool::ApplyFileDiffs(diffs)) => (
                             "apply_file_diffs",
-                            serde_json::to_string(&serde_json::json!({ "summary": diffs.summary }))
-                                .unwrap_or_default(),
+                            serde_json::to_string(&serde_json::json!({
+                                "summary": diffs.summary,
+                                "diffs": diffs.diffs.iter().map(|diff| serde_json::json!({
+                                    "file_path": diff.file_path,
+                                    "search": diff.search,
+                                    "replace": diff.replace,
+                                })).collect::<Vec<_>>(),
+                                "new_files": diffs.new_files.iter().map(|file| serde_json::json!({
+                                    "file_path": file.file_path,
+                                    "content": file.content,
+                                })).collect::<Vec<_>>(),
+                                "deleted_files": diffs.deleted_files.iter().map(|file| file.file_path.clone()).collect::<Vec<_>>(),
+                            }))
+                            .unwrap_or_default(),
                         ),
                         Some(Tool::CallMcpTool(mcp)) => (mcp.name.as_str(), "{}".to_owned()),
                         _ => ("generic_tool", "{}".to_owned()),
@@ -661,6 +683,9 @@ fn build_chat_messages(tasks: &[warp_multi_agent_api::Task], prompt: &str) -> Ve
                             }
                             _ => "Files read successfully".to_owned(),
                         },
+                        Some(ToolResult::Grep(result)) => format_grep_result(result),
+                        Some(ToolResult::FileGlobV2(result)) => format_glob_result(result),
+                        Some(ToolResult::ApplyFileDiffs(result)) => format_diff_result(result),
                         _ => "Tool executed successfully".to_owned(),
                     };
                     messages.push(ChatMessage {
@@ -689,6 +714,67 @@ fn build_chat_messages(tasks: &[warp_multi_agent_api::Task], prompt: &str) -> Ve
         });
     }
     messages
+}
+
+fn format_grep_result(result: &warp_multi_agent_api::GrepResult) -> String {
+    match &result.result {
+        Some(warp_multi_agent_api::grep_result::Result::Success(success)) => {
+            if success.matched_files.is_empty() {
+                return "No matches.".to_owned();
+            }
+            let mut out = String::new();
+            for file in &success.matched_files {
+                if file.matched_lines.is_empty() {
+                    out.push_str(&file.file_path);
+                    out.push('\n');
+                    continue;
+                }
+                for line in &file.matched_lines {
+                    out.push_str(&format!("{}:{}\n", file.file_path, line.line_number));
+                }
+            }
+            out
+        }
+        Some(warp_multi_agent_api::grep_result::Result::Error(error)) => {
+            format!("Grep error: {}", error.message)
+        }
+        None => "Grep finished.".to_owned(),
+    }
+}
+
+fn format_glob_result(result: &warp_multi_agent_api::FileGlobV2Result) -> String {
+    match &result.result {
+        Some(warp_multi_agent_api::file_glob_v2_result::Result::Success(success)) => {
+            if success.matched_files.is_empty() {
+                "No files.".to_owned()
+            } else {
+                success
+                    .matched_files
+                    .iter()
+                    .map(|file| file.file_path.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            }
+        }
+        Some(warp_multi_agent_api::file_glob_v2_result::Result::Error(error)) => {
+            format!("Glob error: {}", error.message)
+        }
+        None => "Glob finished.".to_owned(),
+    }
+}
+
+fn format_diff_result(result: &warp_multi_agent_api::ApplyFileDiffsResult) -> String {
+    match &result.result {
+        Some(warp_multi_agent_api::apply_file_diffs_result::Result::Success(success)) => {
+            let updated = success.updated_files_v2.len();
+            let deleted = success.deleted_files.len();
+            format!("Applied diffs. Updated {updated} file(s), deleted {deleted}.")
+        }
+        Some(warp_multi_agent_api::apply_file_diffs_result::Result::Error(error)) => {
+            format!("Diff failed: {}", error.message)
+        }
+        None => "Diff finished.".to_owned(),
+    }
 }
 
 fn sanitize_error_message(mut message: String, api_key: Option<&str>) -> String {
@@ -855,6 +941,35 @@ mod tests {
             tool,
             Some(Tool::RunShellCommand(cmd)) if cmd.command == "cargo check"
         ));
+    }
+
+    #[test]
+    fn maps_grep_glob_and_search_replace() {
+        match map_pending_tool_to_proto("grep", r#"{"queries":["fn main"],"path":"src"}"#) {
+            Some(Tool::Grep(grep)) => {
+                assert_eq!(grep.queries, vec!["fn main".to_owned()]);
+                assert_eq!(grep.path, "src");
+            }
+            other => panic!("expected grep, got {other:?}"),
+        }
+        match map_pending_tool_to_proto("file_glob", r#"{"patterns":["**/*.rs"]}"#) {
+            Some(Tool::FileGlobV2(glob)) => {
+                assert_eq!(glob.patterns, vec!["**/*.rs".to_owned()]);
+            }
+            other => panic!("expected glob, got {other:?}"),
+        }
+        match map_pending_tool_to_proto(
+            "apply_file_diffs",
+            r#"{"diffs":[{"file_path":"a.rs","search":"old","replace":"new"}]}"#,
+        ) {
+            Some(Tool::ApplyFileDiffs(diffs)) => {
+                assert_eq!(diffs.diffs.len(), 1);
+                assert_eq!(diffs.diffs[0].file_path, "a.rs");
+                assert_eq!(diffs.diffs[0].search, "old");
+                assert_eq!(diffs.diffs[0].replace, "new");
+            }
+            other => panic!("expected diffs, got {other:?}"),
+        }
     }
 
     #[test]

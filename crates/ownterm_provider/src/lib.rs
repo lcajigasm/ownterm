@@ -4,9 +4,14 @@
 //! (`OWNTERM_API_KEY` when the file does not name one). The file may name the
 //! provider, base URL, model, and that variable, and is rejected if it contains a secret.
 
+mod agent_tools;
 mod auto;
 mod form;
 
+pub use agent_tools::{
+    LocalAgentTool, LocalAgentToolSpec, NewFile, SearchReplace, local_agent_tool_specs,
+    parse_local_agent_tool,
+};
 pub use auto::{
     AUTO_MODEL, Access, Attempt, AttemptFailure, Candidate, CatalogModel, ModelChoice, TaskClass,
     catalog_models, choose_model, classify, classify_failure, loopback_port_open, next_candidate,

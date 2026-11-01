@@ -75,6 +75,10 @@ Settings does the same write. Open Settings, stay on Warp Agent, and use **Local
 
 HTTP is accepted only for localhost and loopback. Other endpoints must be HTTPS.
 
+## Agent tools
+
+With a model configured, the assistant can run a shell command, read files, grep, glob, and apply a search-and-replace diff. Those calls stay on this machine. Grep is not Warp's cloud code index. A diff still waits for the confirmation the terminal already shows.
+
 ## Local workflows
 
 Workflows in `~/.ownterm/workflows` show up in command search and in the `/` menu. They are files on this machine. Warp Drive is not involved.

@@ -6,6 +6,8 @@ Telemetry, accounts, hosted keys, and paid or cloud-only behavior stay out. Two 
 
 Checked again on 2026-11-01. The upstream default branch still ends at `d57d9760dba0590416eca4c94379ce7653f347b5` (#16696, 2026-10-30). No newer commit, so this pass brings nothing further.
 
+Checked again on 2026-11-02. The same commit is still the tip. This pass brings nothing from upstream. The agent-tool work in this tree is local.
+
 ## Brought
 
 | Change | Why |
