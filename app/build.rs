@@ -120,6 +120,7 @@ fn main() -> Result<()> {
         println!("cargo:rerun-if-env-changed=CARGO_BIN_NAME");
         println!("cargo:rerun-if-env-changed=GIT_RELEASE_TAG");
         println!("cargo:rerun-if-env-changed=WARP_APP_NAME");
+        println!("cargo:rerun-if-env-changed=OWNTERM_WINDOWS_ICON");
         // Retrieve the Cargo profile name so that we can put a copy of ConPTY in
         // the correct target subdirectory.
         //
@@ -471,13 +472,22 @@ fn embed_resource_file(target_dir: &Path) {
 
     let version = env::var("GIT_RELEASE_TAG").unwrap_or("v0".to_owned());
     let app_name = env::var("WARP_APP_NAME").unwrap_or("Warp".to_owned());
-    let bin_name = env::var("CARGO_BIN_NAME").unwrap_or("local".to_owned());
-
-    let icon_path = Path::new("channels")
-        .join(bin_name)
-        .join("icon")
-        .join("no-padding")
-        .join("icon.ico");
+    let bin_name = env::var("CARGO_BIN_NAME").unwrap_or_else(|_| "local".to_owned());
+    // The package build script often has no bin name, and then the local
+    // channel icon (the upstream mark) would be embedded in ownterm.exe.
+    let icon_path = env::var("OWNTERM_WINDOWS_ICON")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            if bin_name == "ownterm" {
+                PathBuf::from("channels/oss/icon/no-padding/icon.ico")
+            } else {
+                Path::new("channels")
+                    .join(bin_name)
+                    .join("icon")
+                    .join("no-padding")
+                    .join("icon.ico")
+            }
+        });
 
     fs::copy(icon_path, target_dir.join("icon.ico"))
         .unwrap_or_else(|err| panic!("Could not copy icon: {err:#}"));

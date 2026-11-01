@@ -88,6 +88,9 @@ jobs:
 
       - name: Build OwnTerm GUI and TUI
         shell: bash
+        env:
+          # build.rs embeds this icon when the package script has no bin name.
+          OWNTERM_WINDOWS_ICON: channels/oss/icon/no-padding/icon.ico
         run: |
           cargo build --release --locked --target ${{ matrix.target }} -p warp --bin ownterm
           cargo build --release --locked --target ${{ matrix.target }} -p warp_tui --bin ownterm-tui
@@ -183,6 +186,42 @@ jobs:
           path: |
             dist/*.dmg
             dist/*.dmg.sha256
+
+  screenshots:
+    name: Capture screenshots
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.sha }}
+
+      - name: Download Linux archive
+        uses: actions/download-artifact@v4
+        with:
+          name: ownterm-linux-x86_64
+          path: release-artifacts
+
+      - name: Install capture tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xterm xdotool imagemagick fonts-dejavu-core
+
+      - name: Capture ownterm-tui
+        run: |
+          tar -xzf release-artifacts/ownterm-linux-x86_64.tar.gz -C release-artifacts
+          bash script/capture-ownterm.sh \
+            --bin release-artifacts/ownterm-tui \
+            --out-dir dist/screenshots
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: ownterm-screenshots
+          path: |
+            dist/screenshots/ownterm-tui-models.png
+            dist/screenshots/ownterm-tui-help.png
 
   publish:
     name: Publish GitHub Release
