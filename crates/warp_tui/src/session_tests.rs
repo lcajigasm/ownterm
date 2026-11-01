@@ -106,6 +106,20 @@ fn parses_configure_provider_and_models_commands() {
         args.command,
         Some(TuiCommand::ListModels { ref provider, base_url: None }) if provider == "ollama"
     ));
+
+    let args = TuiArgs::try_parse_from(["warp", "auto", "--prompt", "git status"])
+        .expect("auto should parse");
+    assert!(matches!(
+        args.command,
+        Some(TuiCommand::Auto { ref prompt }) if prompt.as_deref() == Some("git status")
+    ));
+
+    let args = TuiArgs::try_parse_from(["warp", "pin-model", "openai/gpt-4o-mini"])
+        .expect("pin-model should parse");
+    assert!(matches!(
+        args.command,
+        Some(TuiCommand::PinModel { ref model }) if model == "openai/gpt-4o-mini"
+    ));
 }
 
 #[test]

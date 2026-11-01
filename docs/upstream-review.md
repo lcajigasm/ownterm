@@ -4,6 +4,8 @@ OwnTerm forked the Warp client at `1e6c3ae465d6a925a9b97ae03877aaadd159b8f1` (20
 
 Telemetry, accounts, hosted keys, and paid or cloud-only behavior stay out. Two small fixes are in this tree. The rest are not.
 
+Checked again on 2026-11-01. The upstream default branch still ends at `d57d9760dba0590416eca4c94379ce7653f347b5` (#16696, 2026-10-30). No newer commit, so this pass brings nothing further.
+
 ## Brought
 
 | Change | Why |

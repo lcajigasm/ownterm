@@ -120,6 +120,17 @@ enum TuiCommand {
         #[arg(long)]
         file: Option<PathBuf>,
     },
+    /// Rank available models for a prompt. Probes loopback servers only.
+    Auto {
+        /// Prompt to classify. Defaults to a short chat.
+        #[arg(long)]
+        prompt: Option<String>,
+    },
+    /// Pin `provider/model` for this session. `auto` clears the pin.
+    PinModel {
+        /// `provider/model`, a unique model id, or `auto` to clear.
+        model: String,
+    },
     /// Print suggested model ids and the OpenAI `/models` URL. Does not download it.
     #[command(name = "models")]
     ListModels {
@@ -149,6 +160,23 @@ fn run_provider_command(command: TuiCommand) -> Result<()> {
             };
             ownterm_provider::write_provider_file(&path, &provider, &model, base_url.as_deref())?;
             println!("{}", path.display());
+            Ok(())
+        }
+        TuiCommand::Auto { prompt } => {
+            let prompt = prompt.unwrap_or_else(|| "hello".to_owned());
+            for line in ownterm_provider::preview(&prompt).map_err(|message| anyhow!(message))? {
+                println!("{line}");
+            }
+            Ok(())
+        }
+        TuiCommand::PinModel { model } => {
+            ownterm_provider::write_session_pin(&model).map_err(|message| anyhow!(message))?;
+            let pin = ownterm_provider::read_session_pin_text();
+            if pin.is_empty() {
+                println!("Cleared the session pin.");
+            } else {
+                println!("{pin}");
+            }
             Ok(())
         }
         TuiCommand::ListModels { provider, base_url } => {

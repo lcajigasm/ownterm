@@ -4,8 +4,15 @@
 //! (`OWNTERM_API_KEY` when the file does not name one). The file may name the
 //! provider, base URL, model, and that variable, and is rejected if it contains a secret.
 
+mod auto;
 mod form;
 
+pub use auto::{
+    AUTO_MODEL, Access, Attempt, AttemptFailure, Candidate, CatalogModel, ModelChoice, TaskClass,
+    catalog_models, choose_model, classify, classify_failure, loopback_port_open, next_candidate,
+    normalize_pin, preview, priced_on, rank, read_session_pin_text, reason_line,
+    record_last_choice, settings_line, should_fallback, write_session_pin,
+};
 pub use form::{ProviderForm, load_provider_form, model_choices, save_provider_form};
 
 use anyhow::{Context, anyhow, bail};
@@ -14,6 +21,7 @@ use url::Url;
 pub const ENV_PROVIDER: &str = "OWNTERM_PROVIDER";
 pub const ENV_BASE_URL: &str = "OWNTERM_BASE_URL";
 pub const ENV_MODEL: &str = "OWNTERM_MODEL";
+pub const ENV_SESSION_MODEL: &str = "OWNTERM_SESSION_MODEL";
 pub const ENV_API_KEY: &str = "OWNTERM_API_KEY";
 pub const ENV_PROVIDER_FILE: &str = "OWNTERM_PROVIDER_FILE";
 

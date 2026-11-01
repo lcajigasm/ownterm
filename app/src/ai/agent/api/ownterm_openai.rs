@@ -139,11 +139,66 @@ struct ParsedChunk {
     tool_calls: Option<Vec<ChatDeltaToolCall>>,
 }
 
+struct LiveAttempt {
+    endpoint: Url,
+    model: String,
+    api_key: Option<String>,
+    reason: String,
+    announce: bool,
+}
+
+fn live_attempts(params: &RequestParams, prompt: &str) -> anyhow::Result<Vec<LiveAttempt>> {
+    match ownterm_provider::choose_model(prompt)? {
+        Some(ownterm_provider::ModelChoice::Explicit(endpoint)) => Ok(vec![LiveAttempt {
+            endpoint: endpoint.endpoint,
+            model: endpoint.model,
+            api_key: endpoint.api_key,
+            reason: String::new(),
+            announce: false,
+        }]),
+        Some(ownterm_provider::ModelChoice::Routed(attempts)) => Ok(attempts
+            .into_iter()
+            .map(|attempt| LiveAttempt {
+                endpoint: attempt.endpoint,
+                model: attempt.model,
+                api_key: attempt.api_key,
+                reason: attempt.reason,
+                announce: true,
+            })
+            .collect()),
+        None => {
+            let config = OpenAiCompatibleConfig::from_custom_endpoint(params).ok_or_else(|| {
+                anyhow!(
+                    "Configure an OpenAI-compatible endpoint in Settings, or set OWNTERM_BASE_URL and OWNTERM_MODEL"
+                )
+            })?;
+            Ok(vec![LiveAttempt {
+                endpoint: config.endpoint,
+                model: config.model,
+                api_key: config.api_key,
+                reason: String::new(),
+                announce: false,
+            }])
+        }
+    }
+}
+
+fn failure_kind(error: &reqwest_eventsource::Error) -> ownterm_provider::AttemptFailure {
+    match error {
+        reqwest_eventsource::Error::InvalidStatusCode(status, _) => {
+            ownterm_provider::classify_failure(Some(status.as_u16()), "")
+        }
+        reqwest_eventsource::Error::Transport(source) => {
+            ownterm_provider::classify_failure(None, &source.to_string())
+        }
+        other => ownterm_provider::classify_failure(None, &other.to_string()),
+    }
+}
+
 pub(super) fn generate(
     params: RequestParams,
     cancellation_rx: futures::channel::oneshot::Receiver<()>,
 ) -> Result<ResponseStream, ConvertToAPITypeError> {
-    let config = OpenAiCompatibleConfig::resolve(&params)?;
     let prompt = params
         .input
         .iter()
@@ -163,13 +218,8 @@ pub(super) fn generate(
         .unwrap_or_else(|| Uuid::new_v4().to_string());
     let message_id = Uuid::new_v4().to_string();
     let messages = build_chat_messages(&params.tasks, &prompt);
-    let request = ChatCompletionsRequest {
-        model: config.model.clone(),
-        messages,
-        tools: ownterm_tools(),
-        tool_choice: None,
-        stream: true,
-    };
+    let tools = ownterm_tools();
+    let attempts = live_attempts(&params, &prompt)?;
 
     let output = async_stream::stream! {
         yield Ok(ResponseEvent {
@@ -181,84 +231,126 @@ pub(super) fn generate(
         });
 
         let client = http_client::Client::new_external();
-        let mut builder = client.post(config.endpoint.clone()).json(&request);
-        if let Some(ref api_key) = config.api_key {
-            builder = builder.bearer_auth(api_key);
-        }
-        let mut events = builder.eventsource();
         let mut started_message = false;
         let mut pending_tool_calls: Vec<PendingToolCall> = Vec::new();
+        let mut attempt_at = 0usize;
 
-        while let Some(event) = events.next().await {
-            match event {
-                Ok(reqwest_eventsource::Event::Open) => {}
-                Ok(reqwest_eventsource::Event::Message(message)) => {
-                    if message.data.trim() == "[DONE]" {
-                        break;
-                    }
-                    match parse_streaming_chunk(&message.data) {
-                        Ok(Some(parsed)) => {
-                            if let Some(text) = parsed.text {
-                                let action = if started_message {
-                                    append_text_action(
+        'attempts: loop {
+            let spec = &attempts[attempt_at];
+            pending_tool_calls.clear();
+            let request = ChatCompletionsRequest {
+                model: spec.model.clone(),
+                messages: messages.clone(),
+                tools: tools.clone(),
+                tool_choice: None,
+                stream: true,
+            };
+            let mut builder = client
+                .post(spec.endpoint.clone())
+                .timeout(std::time::Duration::from_secs(45))
+                .json(&request);
+            if let Some(ref api_key) = spec.api_key {
+                builder = builder.bearer_auth(api_key);
+            }
+            let mut events = builder.eventsource();
+            let mut committed = false;
+
+            while let Some(event) = events.next().await {
+                match event {
+                    Ok(reqwest_eventsource::Event::Open) => {}
+                    Ok(reqwest_eventsource::Event::Message(message)) => {
+                        if message.data.trim() == "[DONE]" {
+                            break;
+                        }
+                        match parse_streaming_chunk(&message.data) {
+                            Ok(Some(parsed)) => {
+                                if !committed && spec.announce {
+                                    ownterm_provider::record_last_choice(&spec.reason);
+                                    yield Ok(client_action_event(add_text_action(
                                         &task_id,
                                         &request_id,
                                         &message_id,
-                                        text,
-                                    )
-                                } else {
+                                        format!("{}\n", spec.reason),
+                                    )));
                                     started_message = true;
-                                    add_text_action(
-                                        &task_id,
-                                        &request_id,
-                                        &message_id,
-                                        text,
-                                    )
-                                };
-                                yield Ok(client_action_event(action));
-                            }
-                            if let Some(tool_calls) = parsed.tool_calls {
-                                for delta_call in tool_calls {
-                                    let idx = delta_call.index.unwrap_or(0);
-                                    if idx >= pending_tool_calls.len() {
-                                        pending_tool_calls.resize_with(idx + 1, PendingToolCall::default);
-                                    }
-                                    let pending = &mut pending_tool_calls[idx];
-                                    if let Some(id) = delta_call.id {
-                                        pending.id.push_str(&id);
-                                    }
-                                    if let Some(func) = delta_call.function {
-                                        if let Some(name) = func.name {
-                                            pending.name.push_str(&name);
+                                }
+                                committed = true;
+                                if let Some(text) = parsed.text {
+                                    let action = if started_message {
+                                        append_text_action(
+                                            &task_id,
+                                            &request_id,
+                                            &message_id,
+                                            text,
+                                        )
+                                    } else {
+                                        started_message = true;
+                                        add_text_action(
+                                            &task_id,
+                                            &request_id,
+                                            &message_id,
+                                            text,
+                                        )
+                                    };
+                                    yield Ok(client_action_event(action));
+                                }
+                                if let Some(tool_calls) = parsed.tool_calls {
+                                    for delta_call in tool_calls {
+                                        let idx = delta_call.index.unwrap_or(0);
+                                        if idx >= pending_tool_calls.len() {
+                                            pending_tool_calls.resize_with(idx + 1, PendingToolCall::default);
                                         }
-                                        if let Some(args) = func.arguments {
-                                            pending.arguments.push_str(&args);
+                                        let pending = &mut pending_tool_calls[idx];
+                                        if let Some(id) = delta_call.id {
+                                            pending.id.push_str(&id);
+                                        }
+                                        if let Some(func) = delta_call.function {
+                                            if let Some(name) = func.name {
+                                                pending.name.push_str(&name);
+                                            }
+                                            if let Some(args) = func.arguments {
+                                                pending.arguments.push_str(&args);
+                                            }
                                         }
                                     }
                                 }
                             }
-                        }
-                        Ok(None) => {}
-                        Err(error) => {
-                            yield Err(Arc::new(AIApiError::Other(error)));
-                            return;
+                            Ok(None) => {}
+                            Err(error) => {
+                                if !committed
+                                    && attempt_at + 1 < attempts.len()
+                                {
+                                    attempt_at += 1;
+                                    continue 'attempts;
+                                }
+                                yield Err(Arc::new(AIApiError::Other(error)));
+                                return;
+                            }
                         }
                     }
-                }
-                Err(error) => {
-                    let api_error =
-                        AIApiError::from_stream_error("OwnTermOpenAICompatible", error).await;
-                    let sanitized = match api_error {
-                        AIApiError::ErrorStatus(status, body) => AIApiError::ErrorStatus(
-                            status,
-                            sanitize_error_message(body, config.api_key.as_deref()),
-                        ),
-                        other => other,
-                    };
-                    yield Err(Arc::new(sanitized));
-                    return;
+                    Err(error) => {
+                        if !committed
+                            && attempt_at + 1 < attempts.len()
+                            && ownterm_provider::should_fallback(failure_kind(&error))
+                        {
+                            attempt_at += 1;
+                            continue 'attempts;
+                        }
+                        let api_error =
+                            AIApiError::from_stream_error("OwnTermOpenAICompatible", error).await;
+                        let sanitized = match api_error {
+                            AIApiError::ErrorStatus(status, body) => AIApiError::ErrorStatus(
+                                status,
+                                sanitize_error_message(body, spec.api_key.as_deref()),
+                            ),
+                            other => other,
+                        };
+                        yield Err(Arc::new(sanitized));
+                        return;
+                    }
                 }
             }
+            break;
         }
 
         if !pending_tool_calls.is_empty() {
@@ -302,28 +394,6 @@ pub(super) fn generate(
 }
 
 impl OpenAiCompatibleConfig {
-    fn resolve(params: &RequestParams) -> anyhow::Result<Self> {
-        if let Some(config) = Self::from_environment()? {
-            return Ok(config);
-        }
-        Self::from_custom_endpoint(params).ok_or_else(|| {
-            anyhow!(
-                "Configure an OpenAI-compatible endpoint in Settings, or set OWNTERM_BASE_URL and OWNTERM_MODEL"
-            )
-        })
-    }
-
-    fn from_environment() -> anyhow::Result<Option<Self>> {
-        let Some(resolved) = ownterm_provider::resolve_from_process_env()? else {
-            return Ok(None);
-        };
-        Ok(Some(Self {
-            endpoint: resolved.endpoint,
-            model: resolved.model,
-            api_key: resolved.api_key,
-        }))
-    }
-
     fn from_custom_endpoint(params: &RequestParams) -> Option<Self> {
         let selected_model = params.model.to_string();
         params
