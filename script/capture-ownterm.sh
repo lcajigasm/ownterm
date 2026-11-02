@@ -107,12 +107,34 @@ run_held() {
 
 export HOME="$home"
 export TERM=xterm-256color
+mkdir -p "$home/.ownterm/workflows"
+cat >"$home/.ownterm/workflows/git-status.yaml" <<'EOF'
+---
+name: "Git status"
+command: "git status --short"
+description: "Show the working tree status"
+arguments: []
+---
+EOF
+cat >"$home/.ownterm/workflows/checkout.yaml" <<'EOF'
+---
+name: "Checkout"
+command: "git checkout {{branch}}"
+description: "Switch to a branch"
+arguments:
+  - name: branch
+    arg_type: Text
+    description: "Value for branch"
+---
+EOF
 
 # Command output only. The interactive zero state still says "Log in with Warp",
 # and this Xvfb has no window manager, so keystrokes never reach that screen.
 run_held "ownterm-models" "$out/ownterm-tui-models.png" "64x8" \
   "$bin" models --provider ollama
-run_held "ownterm-help" "$out/ownterm-tui-help.png" "112x32" \
+run_held "ownterm-help" "$out/ownterm-tui-help.png" "160x36" \
   "$bin" --help
+run_held "ownterm-workflows" "$out/ownterm-tui-workflows.png" "72x8" \
+  "$bin" workflow list
 
 echo "captured ownterm-tui into $out"

@@ -81,7 +81,12 @@ With a model configured, the assistant can run a shell command, read files, grep
 
 ## Local workflows
 
-Workflows in `~/.ownterm/workflows` show up in command search and in the `/` menu. They are files on this machine. Warp Drive is not involved.
+Workflows in `~/.ownterm/workflows` show up in command search and in the `/` menu. They are files on this machine. Warp Drive is not involved. `ownterm-tui workflow add` writes that YAML. `{{name}}` in the command becomes a prompted argument. Command search and the `/` menu load the file without a restart.
+
+```bash
+ownterm-tui workflow add --name "Git status" --command "git status --short" --description "Show the working tree status"
+ownterm-tui workflow list
+```
 
 `~/.ownterm/workflows/git-status.yaml`:
 

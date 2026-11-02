@@ -675,6 +675,10 @@
         <img src="screenshots/ownterm-tui-models.png" alt="ownterm-tui models --provider ollama, captured by script/capture-ownterm.sh">
         <figcaption><code>ownterm-tui models --provider ollama</code>, captured from the real binary by <code>script/capture-ownterm.sh</code>. The macOS disk image opens the same terminal in <code>OwnTerm.app</code>.</figcaption>
       </figure>
+      <figure class="terminal-window">
+        <img src="screenshots/ownterm-tui-workflows.png" alt="ownterm-tui workflow list, captured by script/capture-ownterm.sh">
+        <figcaption><code>ownterm-tui workflow list</code>, captured from the real binary. Those commands are files in <code>~/.ownterm/workflows</code>.</figcaption>
+      </figure>
     </section>
 
     <!-- Features Section -->
@@ -705,7 +709,7 @@
           <div class="card-icon">🧠</div>
           <h3>Bring Your Own Model (BYOM)</h3>
           <p>
-            Connect directly to Ollama, vLLM, LM Studio, OpenAI, xAI, OpenRouter, or Groq. Set <code>OWNTERM_PROVIDER</code> and <code>OWNTERM_MODEL</code>. With no provider, OwnTerm asks you to configure one instead of showing Warp credits. Local workflows in <code>~/.ownterm/workflows</code> do not use Warp Drive.
+            Connect directly to Ollama, vLLM, LM Studio, OpenAI, xAI, OpenRouter, or Groq. Set <code>OWNTERM_PROVIDER</code> and <code>OWNTERM_MODEL</code>. With no provider, OwnTerm asks you to configure one instead of showing Warp credits. <code>ownterm-tui workflow add</code> writes a command workflow under <code>~/.ownterm/workflows</code>. Command search and the <code>/</code> menu load it. Warp Drive is not involved.
           </p>
         </div>
 

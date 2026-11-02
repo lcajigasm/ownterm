@@ -95,11 +95,11 @@ enum ProviderApiKeyCommand {
     },
 }
 
-/// One-shot commands available on the standalone TUI binaries. The full app
-/// binary implements the same `dump-settings-schema` contract (see
-/// `warp_cli::Command::DumpSettingsSchema`); this local copy lets
-/// `script/run-tui` seed a real settings schema from whichever TUI binary is
-/// about to run, without building the full GUI app binary just for that.
+// One-shot commands available on the standalone TUI binaries. The full app
+// binary implements the same `dump-settings-schema` contract (see
+// `warp_cli::Command::DumpSettingsSchema`); this local copy lets
+// `script/run-tui` seed a real settings schema from whichever TUI binary is
+// about to run, without building the full GUI app binary just for that.
 #[derive(Debug, Subcommand)]
 enum TuiCommand {
     /// Print the JSON schema for the current Warp channel's settings and exit.
@@ -139,6 +139,36 @@ enum TuiCommand {
         /// Override the preset endpoint used to build the catalog URL.
         #[arg(long)]
         base_url: Option<String>,
+    },
+    /// Save or list command workflows in `~/.ownterm/workflows`.
+    Workflow {
+        #[command(subcommand)]
+        action: WorkflowAction,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum WorkflowAction {
+    /// Print the workflows in the directory.
+    List {
+        /// Directory to read. Defaults to `~/.ownterm/workflows`.
+        #[arg(long)]
+        dir: Option<PathBuf>,
+    },
+    /// Write one workflow the command search and `/` menu can load.
+    Add {
+        /// Title shown in command search.
+        #[arg(long)]
+        name: String,
+        /// Shell command. `{{name}}` becomes a prompted argument.
+        #[arg(long)]
+        command: String,
+        /// One-line description. Optional.
+        #[arg(long)]
+        description: Option<String>,
+        /// Directory to write. Defaults to `~/.ownterm/workflows`.
+        #[arg(long)]
+        dir: Option<PathBuf>,
     },
 }
 
@@ -186,6 +216,56 @@ fn run_provider_command(command: TuiCommand) -> Result<()> {
                 println!("{id}");
             }
             println!("# {url}");
+            Ok(())
+        }
+        TuiCommand::Workflow { action } => run_workflow_command(action),
+    }
+}
+
+fn workflow_dir(dir: Option<PathBuf>) -> Result<PathBuf> {
+    match dir {
+        Some(dir) => Ok(dir),
+        None => ownterm_provider::default_workflows_dir().map_err(|error| anyhow!(error)),
+    }
+}
+
+fn run_workflow_command(action: WorkflowAction) -> Result<()> {
+    match action {
+        WorkflowAction::List { dir } => {
+            let dir = workflow_dir(dir)?;
+            let workflows = ownterm_provider::list_local_workflows(&dir)?;
+            if workflows.is_empty() {
+                println!("No local workflows in {}", dir.display());
+                return Ok(());
+            }
+            for workflow in workflows {
+                if workflow.arguments.is_empty() {
+                    println!("{} — {}", workflow.name, workflow.command);
+                } else {
+                    println!(
+                        "{} — {} [{}]",
+                        workflow.name,
+                        workflow.command,
+                        workflow.arguments.join(", ")
+                    );
+                }
+            }
+            Ok(())
+        }
+        WorkflowAction::Add {
+            name,
+            command,
+            description,
+            dir,
+        } => {
+            let dir = workflow_dir(dir)?;
+            let workflow = ownterm_provider::LocalWorkflow::new(
+                name,
+                command,
+                description.unwrap_or_default(),
+            )?;
+            let path = ownterm_provider::write_local_workflow(&dir, &workflow)?;
+            println!("{}", path.display());
             Ok(())
         }
     }
