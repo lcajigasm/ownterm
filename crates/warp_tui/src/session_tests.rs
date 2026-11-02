@@ -120,6 +120,41 @@ fn parses_configure_provider_and_models_commands() {
         args.command,
         Some(TuiCommand::PinModel { ref model }) if model == "openai/gpt-4o-mini"
     ));
+
+    let args = TuiArgs::try_parse_from([
+        "warp",
+        "workflow",
+        "add",
+        "--name",
+        "Git status",
+        "--command",
+        "git status --short",
+        "--description",
+        "Working tree",
+        "--dir",
+        "/tmp/ownterm-workflows",
+    ])
+    .expect("workflow add should parse");
+    match args.command {
+        Some(TuiCommand::Workflow { action }) => match action {
+            super::WorkflowAction::Add {
+                name,
+                command,
+                description,
+                dir,
+            } => {
+                assert_eq!(name, "Git status");
+                assert_eq!(command, "git status --short");
+                assert_eq!(description.as_deref(), Some("Working tree"));
+                assert_eq!(
+                    dir.as_deref(),
+                    Some(std::path::Path::new("/tmp/ownterm-workflows"))
+                );
+            }
+            other => panic!("unexpected workflow action: {other:?}"),
+        },
+        other => panic!("unexpected command: {other:?}"),
+    }
 }
 
 #[test]

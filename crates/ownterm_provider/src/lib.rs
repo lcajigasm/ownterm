@@ -7,6 +7,7 @@
 mod agent_tools;
 mod auto;
 mod form;
+mod workflows;
 
 pub use agent_tools::{
     LocalAgentTool, LocalAgentToolSpec, NewFile, SearchReplace, local_agent_tool_specs,
@@ -19,6 +20,10 @@ pub use auto::{
     record_last_choice, settings_line, should_fallback, write_session_pin,
 };
 pub use form::{ProviderForm, load_provider_form, model_choices, save_provider_form};
+pub use workflows::{
+    LocalWorkflow, default_workflows_dir, list_local_workflows, parse_workflow_file,
+    write_local_workflow,
+};
 
 use anyhow::{Context, anyhow, bail};
 use url::Url;

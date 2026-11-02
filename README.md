@@ -44,13 +44,15 @@ These frames are `ownterm-tui` running under Xvfb, taken by [`script/capture-own
 
 ![ownterm-tui --help](docs/screenshots/ownterm-tui-help.png)
 
+![ownterm-tui workflow list](docs/screenshots/ownterm-tui-workflows.png)
+
 The macOS disk image opens the desktop app, `OwnTerm.app`, with the same terminal model.
 
 ## Install
 
 ### Homebrew
 
-The tap [`lcajigasm/homebrew-tap`](https://github.com/lcajigasm/homebrew-tap) installs the release archives (the `.tar.gz` files, which the formula checksums). It does not use the disk image.
+The tap [`lcajigasm/homebrew-tap`](https://github.com/lcajigasm/homebrew-tap) installs the macOS disk image. The cask checksums `ownterm-macos-universal.dmg`.
 
 ```bash
 brew install lcajigasm/tap/ownterm
@@ -105,7 +107,7 @@ export OWNTERM_MODEL=llama3.3
 ownterm
 ```
 
-For a cloud provider, export `OWNTERM_API_KEY` in the environment. Do not put the key in the command line of a shared note. Workflows in `~/.ownterm/workflows` show up in command search and the `/` menu. They are files on this machine. The longer guide is [docs/usage.md](docs/usage.md).
+For a cloud provider, export `OWNTERM_API_KEY` in the environment. Do not put the key in the command line of a shared note. Workflows in `~/.ownterm/workflows` show up in command search and the `/` menu. They are files on this machine. Save one with `ownterm-tui workflow add --name "Git status" --command "git status --short"`. A `{{name}}` in the command is an argument the palette prompts for. The longer guide is [docs/usage.md](docs/usage.md).
 
 ## Auto mode
 
