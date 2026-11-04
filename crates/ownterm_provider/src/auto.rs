@@ -136,17 +136,26 @@ pub fn should_fallback(failure: AttemptFailure) -> bool {
     }
 }
 
-pub fn rank(
+/// The model Auto will call, plus cheaper fits it skipped because that provider was down or had no key.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Selection {
+    pub class: TaskClass,
+    pub chosen: Candidate,
+    pub ranked: Vec<Candidate>,
+    pub skipped: Vec<String>,
+    pub reason: String,
+}
+
+pub fn select(
     class: TaskClass,
     prompt_chars: usize,
     models: &[CatalogModel],
     access: &[Access],
     preferred_provider: Option<&str>,
-) -> Result<Vec<Candidate>, String> {
+) -> Result<Selection, String> {
     let need = requirements(class, prompt_chars);
     let mut fits: Vec<&CatalogModel> = models
         .iter()
-        .filter(|model| model_available(model, access))
         .filter(|model| model_fits(model, &need))
         .collect();
     fits.sort_by(|left, right| {
@@ -157,13 +166,49 @@ pub fn rank(
             .then(left.provider.cmp(&right.provider))
             .then(left.id.cmp(&right.id))
     });
-    if fits.is_empty() {
+    let mut ranked = Vec::new();
+    let mut skipped = Vec::new();
+    for model in fits {
+        if model_available(model, access) {
+            ranked.push(to_candidate(model));
+        } else if ranked.is_empty() {
+            skipped.push(format!("{}/{}", model.provider, model.id));
+        }
+    }
+    if ranked.is_empty() {
         return Err(
             "Auto found no available model for this task. Start a local server or set a provider key."
                 .to_owned(),
         );
     }
-    Ok(fits.iter().copied().map(to_candidate).collect())
+    let chosen = ranked[0].clone();
+    let reason = selection_reason(class, &chosen, &skipped);
+    Ok(Selection {
+        class,
+        chosen,
+        ranked,
+        skipped,
+        reason,
+    })
+}
+
+pub fn rank(
+    class: TaskClass,
+    prompt_chars: usize,
+    models: &[CatalogModel],
+    access: &[Access],
+    preferred_provider: Option<&str>,
+) -> Result<Vec<Candidate>, String> {
+    Ok(select(class, prompt_chars, models, access, preferred_provider)?.ranked)
+}
+
+fn selection_reason(class: TaskClass, candidate: &Candidate, skipped: &[String]) -> String {
+    let line = reason_line(class, candidate, None);
+    if skipped.is_empty() {
+        line
+    } else {
+        format!("{line} Fell back: no provider for {}.", skipped.join(", "))
+    }
 }
 
 pub fn next_candidate<'a>(ranked: &'a [Candidate], failed: &Candidate) -> Option<&'a Candidate> {
@@ -245,15 +290,15 @@ pub fn settings_line(provider: &str, model: &str, session_pin: &str) -> String {
         return format!("Default model is {model}. Set the model to Auto to route by cost.");
     }
     let access = access_from_environment();
-    match rank(
+    match select(
         TaskClass::Chat,
         "hello".len(),
         catalog_models(),
         &access,
         Some(provider),
     ) {
-        Ok(ranked) => {
-            let line = reason_line(TaskClass::Chat, &ranked[0], None);
+        Ok(selection) => {
+            let line = selection.reason;
             match read_last_choice() {
                 Some(last) => format!("{line} Last request: {last}"),
                 None => line,
@@ -269,15 +314,20 @@ pub fn preview(prompt: &str) -> Result<Vec<String>, String> {
         .ok()
         .flatten()
         .and_then(|file| file.provider);
-    let ranked = rank(
+    let selection = select(
         class,
         prompt.chars().count(),
         catalog_models(),
         &access_from_environment(),
         preferred.as_deref(),
     )?;
+    let ranked = &selection.ranked;
     let mut lines = Vec::with_capacity(ranked.len());
     for (index, candidate) in ranked.iter().enumerate() {
+        if index == 0 {
+            lines.push(selection.reason.clone());
+            continue;
+        }
         let previous = index
             .checked_sub(1)
             .map(|earlier| format!("{}/{}", ranked[earlier].provider, ranked[earlier].model));
@@ -312,7 +362,7 @@ pub fn choose_model(prompt: &str) -> anyhow::Result<Option<ModelChoice>> {
     }
     let class = classify(prompt);
     let access = access_from_environment();
-    let ranked = rank(
+    let selection = select(
         class,
         prompt.chars().count(),
         catalog_models(),
@@ -320,8 +370,15 @@ pub fn choose_model(prompt: &str) -> anyhow::Result<Option<ModelChoice>> {
         Some(&provider),
     )
     .map_err(|message| anyhow!(message))?;
+    log::info!("{}", selection.reason);
+    record_last_choice(&selection.reason);
+    let ranked = &selection.ranked;
     let mut attempts = Vec::with_capacity(ranked.len());
     for (index, candidate) in ranked.iter().enumerate() {
+        if index == 0 {
+            attempts.push(attempt_for(candidate, selection.reason.clone())?);
+            continue;
+        }
         let previous = index
             .checked_sub(1)
             .map(|earlier| format!("{}/{}", ranked[earlier].provider, ranked[earlier].model));

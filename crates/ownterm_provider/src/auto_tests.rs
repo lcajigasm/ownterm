@@ -1,6 +1,6 @@
 use super::{
     Access, AttemptFailure, CatalogModel, TaskClass, catalog_models, classify, classify_failure,
-    loopback_port_open, next_candidate, normalize_pin, priced_on, rank, reason_line,
+    loopback_port_open, next_candidate, normalize_pin, priced_on, rank, reason_line, select,
     should_fallback,
 };
 
@@ -267,6 +267,79 @@ fn shipped_catalog_keeps_local_models_free_and_cites_sources() {
             .iter()
             .any(|model| model.provider == "xai" && !model.price_exact)
     );
+}
+
+fn tier(
+    provider: &str,
+    id: &str,
+    quality: u8,
+    tools: bool,
+    context: u32,
+    input: i64,
+    output: i64,
+) -> CatalogModel {
+    let mut model = model(provider, id, input, output);
+    model.quality = quality;
+    model.tools = tools;
+    model.context_tokens = context;
+    model.code = true;
+    if input == 0 && output == 0 {
+        model.api_key_env = None;
+    }
+    model
+}
+
+#[test]
+fn a_simple_task_uses_the_cheapest_model() {
+    let models = vec![
+        tier("ollama", "small", 2, false, 8_192, 0, 0),
+        tier("openai", "gpt-4o", 4, true, 128_000, 2_500_000, 10_000_000),
+    ];
+    let access = vec![access("ollama", false, true), access("openai", true, false)];
+    for class in [TaskClass::Command, TaskClass::Chat] {
+        let selection = select(class, 8, &models, &access, None).unwrap();
+        assert_eq!(selection.chosen.model, "small");
+        assert!(selection.skipped.is_empty());
+        assert!(!selection.reason.contains("Fell back"));
+        assert!(selection.reason.contains("local, $0"));
+    }
+}
+
+#[test]
+fn tools_or_a_long_context_step_up() {
+    let models = vec![
+        tier("ollama", "small", 2, false, 8_192, 0, 0),
+        tier("openai", "gpt-4o-mini", 3, true, 32_768, 150_000, 600_000),
+        tier("openai", "gpt-4o", 4, true, 128_000, 2_500_000, 10_000_000),
+    ];
+    let access = vec![access("ollama", false, true), access("openai", true, false)];
+    let agent = select(TaskClass::Agent, 40, &models, &access, None).unwrap();
+    assert_eq!(agent.chosen.model, "gpt-4o-mini");
+    assert!(agent.ranked.iter().all(|item| item.model != "small"));
+
+    let long = select(TaskClass::LongContext, 200_000, &models, &access, None).unwrap();
+    assert_eq!(long.chosen.model, "gpt-4o");
+    assert!(long.ranked.iter().all(|item| item.model != "gpt-4o-mini"));
+}
+
+#[test]
+fn a_missing_provider_falls_back() {
+    let models = vec![
+        tier("ollama", "small", 2, false, 8_192, 0, 0),
+        tier("localai", "tiny", 1, false, 2_048, 0, 0),
+        tier("openai", "gpt-4o-mini", 3, true, 32_768, 150_000, 600_000),
+    ];
+    let access = vec![
+        access("ollama", false, false),
+        access("localai", false, false),
+        access("openai", true, false),
+    ];
+    let selection = select(TaskClass::Chat, 12, &models, &access, None).unwrap();
+    assert_eq!(selection.chosen.model, "gpt-4o-mini");
+    assert_eq!(selection.skipped, vec!["ollama/small".to_owned()]);
+    assert!(selection.reason.contains("Fell back"));
+    assert!(selection.reason.contains("ollama/small"));
+    assert!(!selection.reason.contains("localai/tiny"));
 }
 
 #[test]

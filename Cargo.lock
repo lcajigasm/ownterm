@@ -9908,6 +9908,7 @@ name = "ownterm_provider"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "log",
  "serde_json",
  "url",
 ]
