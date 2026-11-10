@@ -20,6 +20,7 @@ use telemetry::{
 };
 use url::Url;
 pub use user_info::{TuiUserInfoManager, TuiUserInfoManagerEvent, TuiUserInfoSnapshot};
+use warp_core::channel::{Channel, ChannelState};
 use warp_core::telemetry::TelemetryEvent as _;
 use warpui::{AppContext, Entity, SingletonEntity};
 
@@ -207,7 +208,10 @@ impl SingletonEntity for TuiLoginModel {}
 /// Registers the [`TuiLoginModel`], mounts the TUI immediately, and shows an
 /// explicit welcome screen when the user isn't already logged in.
 pub(crate) fn init(mount: TuiMountFn, ctx: &mut AppContext) {
-    let initial_phase = initial_login_phase(AuthStateProvider::as_ref(ctx).get());
+    let initial_phase = initial_login_phase(
+        AuthStateProvider::as_ref(ctx).get(),
+        ChannelState::channel(),
+    );
     let logged_in = matches!(&initial_phase, TuiLoginPhase::LoggedIn);
     ctx.add_singleton_model(move |_| TuiLoginModel {
         phase: initial_phase,
@@ -241,8 +245,9 @@ fn has_validated_identity(auth_state: &AuthState) -> bool {
     auth_state.is_logged_in() && auth_state.user_id().is_some()
 }
 
-fn initial_login_phase(auth_state: &AuthState) -> TuiLoginPhase {
-    if has_validated_identity(auth_state) {
+/// The OSS channel has no account service to sign in to, so it starts in the terminal.
+fn initial_login_phase(auth_state: &AuthState, channel: Channel) -> TuiLoginPhase {
+    if matches!(channel, Channel::Oss) || has_validated_identity(auth_state) {
         TuiLoginPhase::LoggedIn
     } else {
         TuiLoginPhase::SignedOutWelcome

@@ -175,9 +175,19 @@ pub fn parse_local_agent_tool(name: &str, arguments_json: &str) -> Option<LocalA
 }
 
 fn shell_command(args: &Value, raw: &str) -> String {
-    first_string(args, &["command", "cmd"])
-        .filter(|command| !command.trim().is_empty())
-        .unwrap_or_else(|| raw.trim().to_owned())
+    if let Some(command) =
+        first_string(args, &["command", "cmd"]).filter(|command| !command.trim().is_empty())
+    {
+        return command;
+    }
+    // Some models send the bare command instead of a JSON object. A JSON object with no command
+    // must never be run as if it were one.
+    let raw = raw.trim();
+    if raw.starts_with('{') || raw.starts_with('[') {
+        String::new()
+    } else {
+        raw.to_owned()
+    }
 }
 
 fn read_paths(args: &Value, raw: &str) -> Vec<String> {
