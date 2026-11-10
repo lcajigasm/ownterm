@@ -975,7 +975,7 @@ fn auto_approve_controls_retain_independent_mouse_state() {
         let (mut element, scene, buffer) = view.read(&app, |view, ctx| {
             let builder = TuiUiBuilder::from_app(ctx);
             let controls = TuiFlex::column()
-                .child(view.render_warping_indicator("Warping...", Duration::ZERO, ctx))
+                .child(view.render_warping_indicator("Working...", Duration::ZERO, ctx))
                 .child(view.render_auto_approve_statusline(&builder, ctx))
                 .finish();
             render_retained_element(controls, ctx, 80, 2)
@@ -1231,7 +1231,7 @@ fn tui_cli_shell_command_uses_channel_entry_points() {
     );
     assert_eq!(
         super::tui_cli_shell_command(Channel::Oss, "--version"),
-        "warp-oss --version"
+        "ownterm --version"
     );
     assert_eq!(
         super::tui_cli_shell_command(Channel::Integration, "--version"),
@@ -3356,7 +3356,7 @@ fn zero_state_position_stays_stable_across_shell_bootstrap() {
         let title_row = |lines: &[String]| {
             lines
                 .iter()
-                .position(|line| line.contains("Warp Agent CLI"))
+                .position(|line| line.contains("OwnTerm Agent CLI"))
                 .unwrap_or_else(|| panic!("zero-state title should render:\n{}", lines.join("\n")))
         };
         assert_eq!(
@@ -3656,7 +3656,7 @@ fn zero_state_running_command_hint_shows_attachment() {
 
         let lines = render_session(&mut app, &view, 80, 40);
         assert!(
-            lines.iter().any(|line| line.contains("Warp Agent CLI")),
+            lines.iter().any(|line| line.contains("OwnTerm Agent CLI")),
             "zero state should remain visible:\n{}",
             lines.join("\n")
         );
@@ -4218,8 +4218,8 @@ fn zero_state_renders_with_only_zero_height_bootstrap_blocks() {
         let lines = frame.buffer.to_lines();
         let title_row = lines
             .iter()
-            .position(|line| line.contains("Warp Agent CLI"))
-            .expect("zero state should render the Warp Agent CLI title");
+            .position(|line| line.contains("OwnTerm Agent CLI"))
+            .expect("zero state should render the OwnTerm Agent CLI title");
         assert!(
             title_row < 28,
             "zero-state title should render in the transcript area:\n{}",
@@ -4270,11 +4270,11 @@ fn first_zero_state_stays_hidden_while_markers_load_and_reconciles_without_repla
             );
         });
         let lines = render_session(&mut app, &view, 100, 24);
-        assert!(lines.iter().any(|line| line.contains("Warp Agent CLI")));
+        assert!(lines.iter().any(|line| line.contains("OwnTerm Agent CLI")));
         assert!(
             lines
                 .iter()
-                .all(|line| !line.contains("What’s different about Warp"))
+                .all(|line| !line.contains("What’s different about OwnTerm"))
         );
         assert!(lines.iter().all(|line| !line.contains("████")));
 
@@ -4390,11 +4390,11 @@ fn background_session_does_not_receive_first_run_onboarding() {
             );
         });
         let lines = render_session(&mut app, &onboarding_view, 100, 24);
-        assert!(lines.iter().any(|line| line.contains("Welcome to Warp")));
+        assert!(lines.iter().any(|line| line.contains("Welcome to OwnTerm")));
         assert!(
             lines
                 .iter()
-                .any(|line| line.contains("What’s different about Warp"))
+                .any(|line| line.contains("What’s different about OwnTerm"))
         );
     });
 }

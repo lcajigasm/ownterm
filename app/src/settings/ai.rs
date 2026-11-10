@@ -2357,8 +2357,16 @@ impl AISettings {
             && AppExecutionMode::as_ref(app).allows_active_ai()
     }
 
+    /// Whether AI features served by dedicated Warp server endpoints, rather than by the agent's
+    /// model provider, can run. OwnTerm has no such server.
+    fn is_server_backed_ai_available() -> bool {
+        ChannelState::channel() != Channel::Oss
+    }
+
     pub fn is_prompt_suggestions_enabled(&self, app: &warpui::AppContext) -> bool {
-        self.is_active_ai_enabled(app) && *self.prompt_suggestions_enabled_internal
+        Self::is_server_backed_ai_available()
+            && self.is_active_ai_enabled(app)
+            && *self.prompt_suggestions_enabled_internal
     }
 
     pub fn is_rule_suggestions_enabled(&self, app: &warpui::AppContext) -> bool {
@@ -2370,24 +2378,33 @@ impl AISettings {
     }
 
     pub fn is_natural_language_autosuggestions_enabled(&self, app: &warpui::AppContext) -> bool {
-        self.is_active_ai_enabled(app) && *self.natural_language_autosuggestions_enabled_internal
+        Self::is_server_backed_ai_available()
+            && self.is_active_ai_enabled(app)
+            && *self.natural_language_autosuggestions_enabled_internal
     }
 
     pub fn is_shared_block_title_generation_enabled(&self, app: &warpui::AppContext) -> bool {
-        self.is_active_ai_enabled(app) && *self.shared_block_title_generation_enabled_internal
+        Self::is_server_backed_ai_available()
+            && self.is_active_ai_enabled(app)
+            && *self.shared_block_title_generation_enabled_internal
     }
 
     pub fn is_git_operations_autogen_enabled(&self, app: &warpui::AppContext) -> bool {
-        self.is_active_ai_enabled(app) && *self.git_operations_autogen_enabled_internal
+        Self::is_server_backed_ai_available()
+            && self.is_active_ai_enabled(app)
+            && *self.git_operations_autogen_enabled_internal
     }
 
     pub fn is_intelligent_autosuggestions_enabled(&self, app: &warpui::AppContext) -> bool {
-        self.is_active_ai_enabled(app) && *self.intelligent_autosuggestions_enabled_internal
+        Self::is_server_backed_ai_available()
+            && self.is_active_ai_enabled(app)
+            && *self.intelligent_autosuggestions_enabled_internal
     }
 
     pub fn is_voice_input_enabled(&self, app: &warpui::AppContext) -> bool {
         // Voice input is conditionally-compiled because it requires additional dependencies on some platforms.
         cfg!(feature = "voice_input")
+            && Self::is_server_backed_ai_available()
             && self.is_any_ai_enabled(app)
             && *self.voice_input_enabled_internal
     }

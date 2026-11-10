@@ -39,7 +39,7 @@ use super::settings_page::{
 use super::{SettingsAction, SettingsSection, ToggleSettingActionPair, flags};
 use crate::appearance::Appearance;
 use crate::auth::auth_manager::AuthManager;
-use crate::channel::ChannelState;
+use crate::channel::{Channel, ChannelState};
 use crate::modal::{Modal, ModalEvent, ModalViewState};
 use crate::send_telemetry_from_ctx;
 use crate::server::telemetry::TelemetryEvent;
@@ -75,7 +75,7 @@ const USER_SECRET_REGEX_DESCRIPTION: &str = "Use regex to define additional secr
     to make it case-insensitive.";
 const TELEMETRY_DESCRIPTION_OLD: &str = "App analytics help us make the product better for you. We only collect \
     app usage metadata, never console input or output.";
-const TELEMETRY_TITLE: &str = "Help improve Warp";
+const TELEMETRY_TITLE: &str = "Help improve OwnTerm";
 const TELEMETRY_DESCRIPTION: &str = "App analytics help us make the product better for you. We may collect \
     certain console interactions to improve Warp's AI capabilities.";
 const TELEMETRY_DOCS_URL: &str = "https://docs.warp.dev/support-and-community/privacy-and-security/privacy#what-telemetry-data-does-warp-collect-and-why";
@@ -1844,6 +1844,11 @@ impl SettingsWidget for DataManagementWidget {
         "data management delete account"
     }
 
+    fn should_render(&self, _app: &AppContext) -> bool {
+        // OwnTerm has no account whose data could be managed or deleted.
+        ChannelState::channel() != Channel::Oss
+    }
+
     fn render(
         &self,
         _view: &Self::View,
@@ -1918,6 +1923,10 @@ impl SettingsWidget for PrivacyPolicyWidget {
 
     fn search_terms(&self) -> &str {
         "privacy policy terms"
+    }
+
+    fn should_render(&self, _app: &AppContext) -> bool {
+        ChannelState::channel() != Channel::Oss
     }
 
     fn render(

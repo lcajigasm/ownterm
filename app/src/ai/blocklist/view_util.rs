@@ -172,7 +172,7 @@ pub fn failed_output_presentation(
             FailedOutputPresentation::GeminiEnterpriseCredentialsExpiredOrInvalid {
                 fallback_message: format!(
                     "{ERROR_APOLOGY_TEXT}\n\nGemini Enterprise credentials expired or invalid.\n\n\
-                     Warp couldn't authenticate with Google Cloud. Refresh your Gemini Enterprise credentials, then retry the request."
+                     OwnTerm couldn't authenticate with Google Cloud. Refresh your Gemini Enterprise credentials, then retry the request."
                 ),
             }
         }

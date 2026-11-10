@@ -1,3 +1,4 @@
+use warp_core::channel::{Channel, ChannelState};
 use warpui::{SingletonEntity, View, ViewContext};
 
 use crate::ai::agent::conversation::AIConversationId;
@@ -50,6 +51,22 @@ pub(crate) fn rename_conversation<T: View>(
         return;
     }
     if conversation_already_has_title(conversation_id, &title, ctx) {
+        return;
+    }
+
+    // OwnTerm conversations never get a server token, so the title only exists locally.
+    if ChannelState::channel() == Channel::Oss {
+        BlocklistAIHistoryModel::handle(ctx).update(ctx, |history, ctx| {
+            history.apply_conversation_title(conversation_id, title.clone(), ctx);
+        });
+        let window_id = ctx.window_id();
+        ToastStack::handle(ctx).update(ctx, |toast_stack, ctx| {
+            toast_stack.add_ephemeral_toast(
+                DismissibleToast::success(format!("Conversation renamed to {title}")),
+                window_id,
+                ctx,
+            );
+        });
         return;
     }
 

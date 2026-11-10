@@ -252,11 +252,11 @@ impl PromptRenderHelper {
                 RemoteServerSetupState::Checking => "Starting shell...".to_string(),
                 RemoteServerSetupState::Installing {
                     progress_percent: Some(p),
-                } => format!("Installing Warp SSH Extension... ({p}%)"),
+                } => format!("Installing OwnTerm SSH Extension... ({p}%)"),
                 RemoteServerSetupState::Installing {
                     progress_percent: None,
-                } => "Installing Warp SSH Extension...".to_string(),
-                RemoteServerSetupState::Updating => "Updating Warp SSH Extension...".to_string(),
+                } => "Installing OwnTerm SSH Extension...".to_string(),
+                RemoteServerSetupState::Updating => "Updating OwnTerm SSH Extension...".to_string(),
                 RemoteServerSetupState::Initializing => "Initializing...".to_string(),
                 RemoteServerSetupState::Ready => "Starting shell...".to_string(),
                 // Failed and Unsupported both fall back to the wrapper-only SSH

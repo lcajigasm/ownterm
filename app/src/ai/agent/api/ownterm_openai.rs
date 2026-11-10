@@ -45,6 +45,10 @@ const STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
 /// Largest tool result, in characters, replayed to the model in one message.
 const MAX_TOOL_OUTPUT_CHARS: usize = 30_000;
 
+/// Largest chat history, in characters, sent to the model unless `OWNTERM_MAX_HISTORY_CHARS` says
+/// otherwise. About 60k tokens, which fits the windows of current hosted and larger local models.
+const DEFAULT_MAX_HISTORY_CHARS: usize = 240_000;
+
 /// Largest attached block, selection, file, or rule file, in characters.
 const MAX_ATTACHMENT_CHARS: usize = 12_000;
 
@@ -289,7 +293,7 @@ fn plan_turn(
     Ok(TurnPlan {
         task_id,
         opening_actions,
-        messages: build_chat_messages(&history),
+        messages: fit_history(build_chat_messages(&history), max_history_chars()),
         routing_prompt,
     })
 }
@@ -1075,6 +1079,46 @@ fn build_chat_messages(history: &[&Message]) -> Vec<ChatMessage> {
         }
     }
     pair_tool_calls_with_results(messages)
+}
+
+fn max_history_chars() -> usize {
+    std::env::var("OWNTERM_MAX_HISTORY_CHARS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(DEFAULT_MAX_HISTORY_CHARS)
+}
+
+fn chat_message_chars(message: &ChatMessage) -> usize {
+    let content = message.content.as_deref().map_or(0, str::len);
+    let calls: usize = message
+        .tool_calls
+        .iter()
+        .flatten()
+        .map(|call| call.function.name.len() + call.function.arguments.len())
+        .sum();
+    content + calls
+}
+
+/// Drops the oldest turns until the history fits `max_chars`. A turn starts at a user message, so
+/// a tool call is never separated from its result; the system message and the latest turn stay.
+fn fit_history(mut messages: Vec<ChatMessage>, max_chars: usize) -> Vec<ChatMessage> {
+    let mut total: usize = messages.iter().map(chat_message_chars).sum();
+    while total > max_chars {
+        let turn_starts: Vec<usize> = messages
+            .iter()
+            .enumerate()
+            .filter(|(_, message)| message.role == "user")
+            .map(|(index, _)| index)
+            .collect();
+        let [first, second, ..] = turn_starts[..] else {
+            break;
+        };
+        total -= messages
+            .drain(first..second)
+            .map(|message| chat_message_chars(&message))
+            .sum::<usize>();
+    }
+    messages
 }
 
 /// Reorders tool messages to follow the assistant message that made their calls, answers calls

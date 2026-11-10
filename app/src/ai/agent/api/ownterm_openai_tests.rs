@@ -327,6 +327,41 @@ fn long_tool_output_keeps_its_start_and_end() {
 }
 
 #[test]
+fn an_oversized_history_drops_its_oldest_turns_whole() {
+    let history = [
+        message(plain_query_kind("first question".to_owned(), None)),
+        shell_call("a", "ls"),
+        shell_result("a", &"x".repeat(500), 0),
+        message(plain_query_kind("second question".to_owned(), None)),
+        message(MessageKind::AgentOutput(AgentOutput {
+            text: "second answer".to_owned(),
+        })),
+        message(plain_query_kind("third question".to_owned(), None)),
+    ];
+    let history: Vec<&Message> = history.iter().collect();
+    let messages = build_chat_messages(&history);
+    let system_chars = chat_message_chars(&messages[0]);
+
+    let fitted = fit_history(messages.clone(), system_chars + 100);
+    let contents: Vec<&str> = fitted[1..]
+        .iter()
+        .filter_map(|message| message.content.as_deref())
+        .collect();
+    assert_eq!(fitted[0].role, "system");
+    assert_eq!(
+        contents,
+        ["second question", "second answer", "third question"]
+    );
+
+    let latest_only = fit_history(messages, 1);
+    assert_eq!(
+        latest_only.last().unwrap().content.as_deref(),
+        Some("third question")
+    );
+    assert_eq!(latest_only.len(), 2);
+}
+
+#[test]
 fn first_turn_creates_the_task_and_records_the_query() {
     let plan = plan_turn(&[], vec![user_query("list files")], "req-1").unwrap();
 

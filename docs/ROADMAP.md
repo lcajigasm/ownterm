@@ -1,35 +1,27 @@
 # OwnTerm — matriz de huecos
 
-OwnTerm es un fork del cliente Warp (Warp Services, Inc.). El núcleo del terminal sigue bajo AGPL-3.0 y MIT. OwnTerm no está afiliado a Warp. Esta matriz compara bloques del cliente upstream con el binario `ownterm` (`Channel::Oss`) en este repositorio.
+OwnTerm es un fork del cliente Warp (Warp Services, Inc.). El núcleo del terminal sigue bajo AGPL-3.0 y MIT. OwnTerm no está afiliado a Warp. Esta matriz compara bloques del cliente upstream con el binario `ownterm` (`Channel::Oss`) en este repositorio. Dónde vive cada mecanismo está en [ARCHITECTURE.md](ARCHITECTURE.md).
 
-La evidencia de compilación del cliente completo es el release [v0.4.0](https://github.com/lcajigasm/ownterm/releases/tag/v0.4.0), que adjunta archivos para macOS arm64, macOS x86_64, Linux x86_64 y Windows x86_64. El CI de pull request audita la privacidad, prueba el instalador sin red, cubre `ownterm_provider` y los tests de canal, y ejecuta `cargo check` de `ownterm` y `ownterm-tui` en Linux. El empaquetado de las cuatro plataformas sigue siendo el workflow del tag, que también adjunta un `.dmg` con `OwnTerm.app`.
+El CI de pull request audita la privacidad, prueba el instalador sin red, cubre `ownterm_provider`, ejecuta `cargo check` de `ownterm` y `ownterm-tui` en Linux y corre los tests del agente local, de la política de flags y del arranque del TUI. El empaquetado de las cuatro plataformas es el workflow del tag.
 
 ## Matriz
 
-| Pri. | Bloque | En Warp | En OwnTerm ahora | Hueco |
-| :--- | :--- | :--- | :--- | :--- |
-| P0 | Telemetría y crashes | RudderStack y Sentry en los canales de producto | Los macros no evalúan el evento si el canal no puede transmitir. `record_event` no construye ni encola nada salvo un opt-in de test. Sentry no arranca sin DSN | Quedan los tipos y los literales en el fuente. No se ejecutan en los binarios de OwnTerm |
-| P0 | Cuenta y suscripción | Login obligatorio y créditos de IA | Sin proveedor, el chip muestra «No AI provider». En OSS, Ajustes abre en el agente y **Local provider** escribe `provider.env` (preset, modelo de la lista local, endpoint y el nombre `api_key_env`). La clave no se guarda | La descarga en vivo del catálogo `/models` sigue fuera del formulario |
-| P0 | Proveedores de IA | Inferencia en los servidores de Warp | `Channel::Oss` usa `ownterm_openai` contra `/chat/completions`. Presets: Ollama, LM Studio, vLLM, LocalAI, OpenAI, xAI, OpenRouter, Groq y compatible. `suggested_models` y `parse_model_ids` cubren un catálogo estático y un documento `/models`. `ownterm-tui models` imprime sugerencias y la URL. Con `model=auto`, la tarea simple usa el modelo más barato que cumple la barra; si hacen falta herramientas o una ventana larga, sube de nivel; si ese proveedor no está, hace fallback y lo escribe en el log. El modelo puede llamar `run_shell_command`, `read_files`, `grep`, `file_glob` y `apply_file_diffs`; el runtime local los ejecuta | No hay adaptadores nativos de Anthropic ni Google. El comando no descarga el catálogo. El índice de código en la nube, el uso del ordenador y las herramientas de cuenta siguen fuera |
-| P1 | Bloques, pestañas, paneles, temas | Sí | El código del cliente sigue en `app/` y se empaqueta en `ownterm` | No hay una pasada de verificación visual en esta tanda. Identidad visual todavía mezcla recursos upstream |
-| P1 | Autocompletado y workflows | Sí, parte acoplada a Warp Drive y a la nube | La búsqueda de comandos incluye workflows de `~/.ownterm/workflows` sin Drive. El menú `/` inserta esos workflows. `ownterm-tui workflow add` escribe el YAML, y `{{argumento}}` queda como argumento. El palette busca archivos locales | Los workflows de agente en la nube y el catálogo de Drive siguen apagados. No hay editor visual dentro de la ventana |
-| P1 | Warp Drive, equipos, billing, Oz | Núcleo del producto de pago | Servidor, RTC y Oz apuntan a `127.0.0.1:9`. Flags de cloud, billing y onboarding de cuenta están apagados en OSS. La barra de Ajustes en OSS omite Cuenta, Billing, Teams, Warp Drive, Referrals, bloques compartidos, entornos cloud, claves de API cloud y Warpify | No hay sustituto local de sincronización. El código de esas pantallas sigue en el binario |
-| P2 | Actualizaciones automáticas | `releases.warp.dev` | `script/install-ownterm.sh` baja el archivo de GitHub Releases, comprueba `SHA256SUMS` y sustituye los binarios. `autoupdate_config` sigue vacío, así que la app no descarga nada | No hay updater dentro de la app |
-| P2 | Firma y notarización | Firmado por Warp | Los artefactos de Actions no se firman. La guía de uso avisa de Gatekeeper y SmartScreen | macOS Gatekeeper y SmartScreen quedan para quien instala el tarball |
-| P3 | CI del cliente completo | Interno | El PR ejecuta `cargo check` de `ownterm` y `ownterm-tui` en Linux, además de la auditoría y `ownterm_provider` | No sustituye el build de release de las cuatro plataformas |
-
-## Telemetría retirada o desactivada en esta tanda
-
-- Envío de lotes a RudderStack (`may_transmit_telemetry`): el canal OSS nunca transmite; sin config de telemetría tampoco.
-- Arranque del colector de red, volcado al cerrar y reenvío del spool en disco. En OSS el spool se borra y la cola en memoria se vacía cada 30 s.
-- Inicialización de Sentry cuando no hay DSN (`is_crash_reporting_available`).
-- `telemetry_config`, `crash_reporting_config`, autoupdate y endpoints de Warp en los binarios de canal, vía `ChannelConfig::without_warp_services`.
-- Clave de cliente Firebase que estaba en `WarpServerConfig::production`.
-- Interruptor de telemetría de sandbox (`WITH_SANDBOX_TELEMETRY`) y `ForceLogin` en el binario preview.
-- Preferencias en memoria de telemetría, crash reports y almacenamiento de conversaciones en la nube cuando el canal no puede transmitir.
+| Pri. | Bloque | En OwnTerm ahora | Hueco |
+| :--- | :--- | :--- | :--- |
+| P0 | Agente local | `ownterm_openai` hace el papel del servicio de agentes: crea la tarea, registra la consulta y los resultados de herramientas, y reconstruye el historial en cada petición. El bucle con herramientas se ha probado con tests contra una conversación real del cliente y ejecutando `ownterm-tui` contra un endpoint simulado | No se ha probado contra cada proveedor real. Herramientas: `run_shell_command`, `read_files`, `grep`, `file_glob`, `apply_file_diffs`. Los servidores MCP locales no se ofrecen al modelo. Sin búsqueda web, subagentes ni comandos interactivos de larga duración |
+| P0 | Proveedores de IA | Cualquier endpoint compatible con `/chat/completions`. Presets: Ollama, LM Studio, vLLM, LocalAI, OpenAI, xAI, OpenRouter, Groq y compatible. `model=auto` elige el modelo más barato disponible y respeta el `base_url` configurado | No hay adaptadores nativos de Anthropic ni Google. No se descarga `/models` en vivo |
+| P0 | Clave de API | Solo desde una variable de entorno; nunca se escribe en disco | La app de escritorio lanzada desde Finder o el Dock no hereda el entorno del shell, así que ahí un proveedor en la nube solo funciona con el endpoint personalizado de Ajustes. Las dos vías de configuración (`provider.env` y Ajustes) no están unificadas |
+| P0 | Telemetría y crashes | Los macros no evalúan el evento si el canal no puede transmitir. Sentry no arranca sin DSN | Quedan los tipos y los literales en el fuente. No hay un test de CI que arranque el binario con la red denegada |
+| P1 | Cuenta, Drive, equipos, billing | Servidor, RTC y Oz apuntan a `127.0.0.1:9`. Los flags de nube, compartir sesión, actualizador, changelog e indexado remoto están apagados. Los menús, la paleta y los Ajustes omiten cuenta, Drive, equipos, referidos, feedback y Slack. El modal de login no se abre | El código de esas pantallas sigue en el binario. Compartir bloque sigue visible en el menú contextual del bloque. La lista de conversaciones del panel izquierdo sigue apagada |
+| P1 | IA respaldada por servidor | Sugerencia de siguiente comando, sugerencias de prompt, búsqueda de comandos con IA, mensajes de commit, títulos de bloque y voz están apagados porque llamaban al servidor de Warp. Renombrar una conversación es local | Sus interruptores siguen visibles en Ajustes aunque no hacen nada. Ninguna de esas funciones se ha reimplementado sobre el modelo local |
+| P1 | Marca | Título de ventana, menús, Ajustes, textos del agente, TUI, primeros pasos y enlaces de ayuda dicen OwnTerm y apuntan a este repositorio | Quedan unos 300 enlaces «Learn more» a `docs.warp.dev`, el texto `--help` de `crates/warp_cli`, y los nombres `TERM_PROGRAM=WarpTerminal` y `WARP_*`, que se mantienen por compatibilidad |
+| P2 | Actualizaciones | `script/install-ownterm.sh` baja el archivo de GitHub Releases y comprueba `SHA256SUMS`. La app no descarga nada | No hay updater dentro de la app |
+| P2 | Empaquetado Linux | Archivo `.tar.gz` y AppImage | `.deb` y `.rpm` están bloqueados para OwnTerm: sus scripts registran el repositorio y la clave de Warp |
+| P2 | Licencias de terceros | Los archivos incluyen `LICENSE-AGPL` y `LICENSE-MIT`. «Acerca de» enlaza el repositorio | Los archivos no incluyen `THIRD_PARTY_LICENSES` |
+| P3 | Firma y notarización | Aplazada. La guía de uso avisa de Gatekeeper y SmartScreen | Los artefactos no se firman |
 
 ## Siguientes tres huecos
 
-1. Pasada visual de bloques, pestañas, paneles y temas: la identidad sigue mezclando recursos de Warp.
-2. Firma y notarización de los binarios. El instalador comprueba `SHA256SUMS`; Gatekeeper y SmartScreen siguen avisando.
-3. Descarga en vivo del catálogo `/models` del endpoint del usuario. El formulario ya ofrece la lista local.
+1. Una forma de dar la clave de API a la app de escritorio sin entorno de shell, y unificar `provider.env` con el endpoint de Ajustes.
+2. Ofrecer al modelo los servidores MCP locales y descargar `/models` del endpoint del usuario.
+3. Test de CI con la red denegada, e incluir `THIRD_PARTY_LICENSES` en los archivos.

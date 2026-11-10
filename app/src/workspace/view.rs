@@ -6794,6 +6794,7 @@ impl Workspace {
                     ctx,
                 );
             }
+            LeftPanelEvent::SignInRequested if ChannelState::channel() == Channel::Oss => {}
             LeftPanelEvent::SignInRequested => {
                 self.open_require_login_modal(AuthViewVariant::RequireLoginCloseable, ctx);
                 self.require_login_modal.update(ctx, |modal, ctx| {
@@ -10002,7 +10003,37 @@ impl Workspace {
         ctx.notify();
     }
 
+    /// The user menu without the entries that need a Warp account or open Warp-owned sites.
+    fn ownterm_user_menu_items() -> Vec<MenuItem<WorkspaceAction>> {
+        #[cfg_attr(target_family = "wasm", allow(unused_mut))]
+        let mut items = vec![
+            MenuItemFields::new("Settings")
+                .with_on_select_action(WorkspaceAction::ShowSettings)
+                .into_item(),
+            MenuItemFields::new("Keyboard shortcuts")
+                .with_on_select_action(WorkspaceAction::ToggleKeybindingsPage)
+                .into_item(),
+            MenuItem::Separator,
+            MenuItemFields::new("Documentation")
+                .with_on_select_action(WorkspaceAction::ViewUserDocs)
+                .into_item(),
+        ];
+
+        #[cfg(not(target_family = "wasm"))]
+        items.push(
+            MenuItemFields::new("View OwnTerm logs")
+                .with_on_select_action(WorkspaceAction::ViewLogs)
+                .into_item(),
+        );
+
+        items
+    }
+
     fn user_menu_items(&self, app: &AppContext) -> Vec<MenuItem<WorkspaceAction>> {
+        if ChannelState::channel() == Channel::Oss {
+            return Self::ownterm_user_menu_items();
+        }
+
         let mut items = Vec::new();
         if !self.auth_state.is_anonymous_or_logged_out() {
             let name = self.auth_state.username_for_display().unwrap_or_default();
@@ -10078,7 +10109,7 @@ impl Workspace {
 
         #[cfg(not(target_family = "wasm"))]
         items.push(
-            MenuItemFields::new("View Warp logs")
+            MenuItemFields::new("View OwnTerm logs")
                 .with_on_select_action(WorkspaceAction::ViewLogs)
                 .into_item(),
         );
@@ -14961,6 +14992,11 @@ impl Workspace {
     }
 
     fn open_require_login_modal(&mut self, variant: AuthViewVariant, ctx: &mut ViewContext<Self>) {
+        // OwnTerm has no accounts, so nothing is ever gated behind signing in.
+        if ChannelState::channel() == Channel::Oss {
+            return;
+        }
+
         self.require_login_modal.update(ctx, |modal, ctx| {
             modal.set_variant(ctx, variant);
         });
@@ -19331,7 +19367,7 @@ impl Workspace {
                 let command = code.trim().to_string();
                 let args_state =
                     ArgumentsState::for_command_workflow(&Default::default(), command.clone());
-                let workflow = Workflow::new("Command from Warp AI", command)
+                let workflow = Workflow::new("Command from OwnTerm AI", command)
                     .with_arguments(args_state.arguments);
                 self.run_workflow_in_active_input(
                     &WorkflowType::AIGenerated {
@@ -20143,7 +20179,7 @@ impl Workspace {
         let body = appearance
             .ui_builder()
             .wrappable_text(
-                "Ask Warp AI to explain errors, suggest commands or write scripts.".to_owned(),
+                "Ask OwnTerm AI to explain errors, suggest commands or write scripts.".to_owned(),
                 true,
             )
             .with_style(UiComponentStyles {
@@ -23911,6 +23947,10 @@ impl Workspace {
         entrypoint: AnonymousUserSignupEntrypoint,
         ctx: &mut ViewContext<Self>,
     ) {
+        if ChannelState::channel() == Channel::Oss {
+            return;
+        }
+
         if self.auth_state.is_user_anonymous().unwrap_or_default() {
             // User has a Firebase anonymous account — use the linking flow.
             AuthManager::handle(ctx).update(ctx, |auth_manager, ctx| {
@@ -24086,7 +24126,10 @@ impl Workspace {
                 entry_focus: GlobalSearchEntryFocus::Results,
             });
         }
-        if *WarpDriveSettings::as_ref(ctx).enable_warp_drive {
+        // Warp Drive needs an account, which OwnTerm does not have.
+        if *WarpDriveSettings::as_ref(ctx).enable_warp_drive
+            && ChannelState::channel() != Channel::Oss
+        {
             views.push(ToolPanelView::WarpDrive);
         }
         views

@@ -140,7 +140,7 @@ fn first_credit_gate_matches_design_and_opens_upgrade() {
                     .map(|line| line.trim_end().to_owned())
                     .collect::<Vec<_>>(),
                 vec![
-                    "You need AI credits in order to use Warp’s agent.".to_owned(),
+                    "You need a configured model provider in order to use the agent.".to_owned(),
                     "Start using AI (ctrl+o).".to_owned(),
                     String::new(),
                     expected_upgrade_url.clone(),
@@ -200,9 +200,8 @@ fn first_credit_gate_consumes_once_and_reacts_to_delayed_marker_readiness() {
             let lines = render_block_lines(first.as_ref(ctx), 100, ctx);
             assert!(first.as_ref(ctx).first_credit_gate);
             assert!(
-                lines
-                    .iter()
-                    .any(|line| line == "You need AI credits in order to use Warp’s agent.")
+                lines.iter().any(|line| line
+                    == "You need a configured model provider in order to use the agent.")
             );
             assert!(
                 lines
@@ -401,7 +400,7 @@ fn out_of_credits_failure_matches_tui_design_and_opens_upgrade() {
                     .collect::<Vec<_>>(),
                 vec![
                     "⚠ I’m sorry, I couldn’t complete that request.".to_owned(),
-                    "  In order to use Warp’s AI features, subscribe to a Warp plan or buy packs of credits."
+                    "  In order to use AI features, configure a model provider or API key."
                         .to_owned(),
                     String::new(),
                     "  Get started with AI (ctrl+o)".to_owned(),

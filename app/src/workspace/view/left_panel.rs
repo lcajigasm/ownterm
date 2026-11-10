@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 
+use warp_core::channel::{Channel, ChannelState};
 use warp_core::send_telemetry_from_ctx;
 use warp_core::ui::Icon;
 use warp_core::ui::theme::color::internal_colors;
@@ -110,9 +111,11 @@ impl ToolPanelView {
                 }
             }
             ToolPanelView::ConversationListView => {
-                if AuthStateProvider::as_ref(app)
-                    .get()
-                    .is_anonymous_or_logged_out()
+                // OwnTerm keeps conversation history locally and has no accounts.
+                if ChannelState::channel() != Channel::Oss
+                    && AuthStateProvider::as_ref(app)
+                        .get()
+                        .is_anonymous_or_logged_out()
                 {
                     ToolPanelAvailability::RequiresAccount
                 } else if AISettings::as_ref(app).is_conversation_history_available(app) {
@@ -1331,7 +1334,13 @@ impl View for LeftPanelView {
 
         let active_view = self.active_view.get();
         let availability = self.active_view_availability(app);
-        let content_area: Box<dyn Element> = if availability != ToolPanelAvailability::Available {
+        let content_area: Box<dyn Element> = if availability
+            == ToolPanelAvailability::RequiresAccount
+            && ChannelState::channel() == Channel::Oss
+        {
+            // There is no account to sign in to, so there is nothing to prompt for.
+            Shrinkable::new(1.0, Empty::new().finish()).finish()
+        } else if availability != ToolPanelAvailability::Available {
             Shrinkable::new(
                 1.0,
                 self.render_unavailable_panel(appearance, active_view, availability),

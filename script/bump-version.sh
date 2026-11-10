@@ -49,6 +49,23 @@ if [ -f "app/Cargo.toml" ]; then
   sed -i '' -E "s/^version = \"[0-9]+\.[0-9]+\.[0-9]+[^\"]*\"/version = \"${VERSION}\"/" app/Cargo.toml
 fi
 
+# Release builds use --locked, so the lock file has to carry the same version.
+if [ -f "Cargo.lock" ]; then
+  echo "Updating Cargo.lock..."
+  python3 -c "
+import re
+with open('Cargo.lock', 'r') as f:
+    content = f.read()
+updated = re.sub(
+    r'(\[\[package\]\]\nname = \"warp\"\nversion = \")[^\"]+(\")',
+    rf'\g<1>${VERSION}\g<2>',
+    content
+)
+with open('Cargo.lock', 'w') as f:
+    f.write(updated)
+"
+fi
+
 # 2. Update app/src/bin/oss.rs (CFBundleShortVersionString)
 if [ -f "app/src/bin/oss.rs" ]; then
   echo "Updating app/src/bin/oss.rs..."
@@ -117,11 +134,11 @@ with open('docs/index.html', 'w') as f:
 fi
 
 echo "==> Version bump complete!"
-git status --short app/Cargo.toml app/src/bin/oss.rs script/windows/ README.md docs/index.html
+git status --short app/Cargo.toml Cargo.lock app/src/bin/oss.rs script/windows/ README.md docs/index.html
 
 if [ "$TAG_FLAG" = true ]; then
   echo "==> Creating commit and git tag v${VERSION}..."
-  git add app/Cargo.toml app/src/bin/oss.rs script/windows/windows-installer.iss script/windows/tui-installer.iss README.md docs/index.html
+  git add app/Cargo.toml Cargo.lock app/src/bin/oss.rs script/windows/windows-installer.iss script/windows/tui-installer.iss README.md docs/index.html
   git commit -m "chore: bump version to v${VERSION}"
   git tag "v${VERSION}"
   echo "==> Created git tag: v${VERSION}"
@@ -131,7 +148,7 @@ if [ "$PUSH_FLAG" = true ]; then
   CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
   echo "==> Pushing ${CURRENT_BRANCH} and tag v${VERSION} to origin..."
   git push origin "${CURRENT_BRANCH}" "v${VERSION}"
-  echo "==> Pushed! GitHub Actions workflow 'Release OwnTerm' will now build and publish release v${VERSION}."
+  echo "==> Pushed! GitHub Actions workflow 'OwnTerm Release' will now build and publish release v${VERSION}."
 else
   echo ""
   echo "Next steps to publish release:"
@@ -141,5 +158,5 @@ else
     echo "  3. Create tag:     git tag \"v${VERSION}\""
   fi
   echo "  4. Push to GitHub: git push origin master --tags"
-  echo "     (This triggers .github/workflows/release-ownterm.yml to compile for macOS, Linux, and Windows)"
+  echo "     (This triggers .github/workflows/release.yml to compile for macOS, Linux, and Windows)"
 fi

@@ -1147,7 +1147,7 @@ struct WarpingModelInputs {
     is_new_user_query: bool,
 }
 
-const UNNAMED_FALLBACK_MODEL_WARPING_TEXT: &str = "Warping with another model.";
+const UNNAMED_FALLBACK_MODEL_WARPING_TEXT: &str = "Working with another model.";
 
 /// The fallback message's copy. It shipped before model naming existed and keeps
 /// its full stop, where everything named since ends in the row's ellipsis. The
@@ -1163,7 +1163,7 @@ fn fallback_warping_text(display_name: &str) -> String {
     format!("{stem} with {display_name}.")
 }
 
-/// Warping text for the model a response is running on, e.g. "Warping with Claude
+/// Warping text for the model a response is running on, e.g. "Working with Claude
 /// Sonnet 4.5...". `None` keeps the row on its generic copy, which is what `auto`
 /// and custom routers get until routing picks a model and the server reports it.
 ///

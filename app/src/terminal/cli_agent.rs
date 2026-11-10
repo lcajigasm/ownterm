@@ -298,7 +298,7 @@ impl CLIAgent {
             CLIAgent::Grok => "Grok Build",
             CLIAgent::Kiro => "Kiro CLI",
             CLIAgent::Muse => "Muse Code",
-            CLIAgent::WarpTui => "Warp TUI",
+            CLIAgent::WarpTui => "OwnTerm TUI",
             CLIAgent::Unknown => "CLI Agent",
         }
     }

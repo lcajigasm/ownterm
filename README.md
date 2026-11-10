@@ -85,7 +85,7 @@ ownterm-tui configure-provider --provider ollama --model llama3.3
 ownterm-tui models --provider ollama
 ```
 
-Or in the desktop app: Settings, Warp Agent, **Local provider**. The model list is the same one `ownterm-tui models` prints. It does not download `/models`.
+Or in the desktop app: Settings, Agent, **Local provider**. The model list is the same one `ownterm-tui models` prints. It does not download `/models`.
 
 | `provider` | Default base URL | Key |
 | :--- | :--- | :--- |
@@ -130,7 +130,9 @@ ownterm-tui auto --prompt "refactor the parser and then run the tests"
 
 A configured model can call five tools, and the terminal runs them on this machine. `run_shell_command` and `read_files` were already there. `grep` searches file contents, `file_glob` lists paths, and `apply_file_diffs` edits a file with search-and-replace, creates a file, or deletes one. The same confirmation path Warp uses for a diff still applies. There is no Warp-hosted code index: grep and glob do not call out.
 
-The model sees those names on the chat request. A later turn gets the tool result back (matching lines, paths, or whether the diff applied), so it can keep going without you pasting the output.
+The model sees those names on the chat request. When a tool finishes, its result (command output, matching lines, paths, or whether the diff applied) goes back to the model on the next request, and the model keeps going until it stops asking for tools. A call with an unknown tool name or arguments that do not parse is not run; the transcript says so instead.
+
+The request also carries the session's working directory, operating system, shell, any blocks or text you attached, and the project's rule files. Long tool output and old turns are trimmed to fit; `OWNTERM_MAX_HISTORY_CHARS` changes the history budget (240000 characters by default).
 
 ## Shortcuts
 
@@ -155,7 +157,7 @@ Desktop app, from the fixed bindings in the client:
 
 ## Roadmap
 
-[docs/ROADMAP.md](docs/ROADMAP.md) is the gap list against the upstream client. The next items there are a visual pass over blocks and themes, code signing, and downloading the live `/models` catalog from your endpoint. The icon in this repository is OwnTerm's, not Warp's.
+[docs/ROADMAP.md](docs/ROADMAP.md) is the gap list against the upstream client. The next items there are a way to give the desktop app an API key without a shell environment, downloading the live `/models` catalog from your endpoint, and code signing. The icon in this repository is OwnTerm's, not Warp's.
 
 ## Contributing
 
