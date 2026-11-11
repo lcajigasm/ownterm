@@ -1,5 +1,7 @@
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, anyhow};
 use futures_util::StreamExt;
@@ -7,21 +9,48 @@ use prost_types::FieldMask;
 use serde::{Deserialize, Serialize};
 use url::Url;
 use uuid::Uuid;
-use warp_multi_agent_api::client_action::{AddMessagesToTask, AppendToMessageContent};
+use warp_multi_agent_api::client_action::{AddMessagesToTask, AppendToMessageContent, CreateTask};
 use warp_multi_agent_api::message::tool_call::apply_file_diffs::{DeleteFile, FileDiff, NewFile};
 use warp_multi_agent_api::message::tool_call::read_files::File as ReadFilesFile;
 use warp_multi_agent_api::message::tool_call::{
     ApplyFileDiffs, FileGlobV2, Grep, ReadFiles, RunShellCommand, Tool,
 };
 use warp_multi_agent_api::message::tool_call_result::Result as ToolResult;
-use warp_multi_agent_api::message::{AgentOutput, Message as MessageKind, ToolCall};
+use warp_multi_agent_api::message::{
+    AgentOutput, Message as MessageKind, ToolCall, ToolCallResult, UserQuery,
+};
+use warp_multi_agent_api::request::input::tool_call_result::Result as RequestToolResult;
+use warp_multi_agent_api::request::input::user_inputs::user_input::Input as UserInput;
+use warp_multi_agent_api::request::input::{
+    Type as RequestInputType, UserQuery as RequestUserQuery,
+};
 use warp_multi_agent_api::response_event::{StreamFinished, StreamInit, stream_finished};
-use warp_multi_agent_api::{ClientAction, Message, ResponseEvent, client_action, response_event};
+use warp_multi_agent_api::{
+    ClientAction, InputContext, Message, ResponseEvent, RunShellCommandResult, Task, client_action,
+    read_files_result, request, response_event, run_shell_command_result,
+};
+use warpui::r#async::Timer;
 
+use super::convert_to::convert_input;
 use super::{ConvertToAPITypeError, RequestParams, ResponseStream};
+use crate::ai::agent::AIAgentInput;
 use crate::server::server_api::AIApiError;
 
 const AGENT_OUTPUT_TEXT_PATH: &str = "agent_output.text";
+
+/// How long the endpoint may stay silent before the request is abandoned. Local servers can take
+/// minutes to load a model before the first token.
+const STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
+
+/// Largest tool result, in characters, replayed to the model in one message.
+const MAX_TOOL_OUTPUT_CHARS: usize = 30_000;
+
+/// Largest chat history, in characters, sent to the model unless `OWNTERM_MAX_HISTORY_CHARS` says
+/// otherwise. About 60k tokens, which fits the windows of current hosted and larger local models.
+const DEFAULT_MAX_HISTORY_CHARS: usize = 240_000;
+
+/// Largest attached block, selection, file, or rule file, in characters.
+const MAX_ATTACHMENT_CHARS: usize = 12_000;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct OpenAiCompatibleConfig {
@@ -96,7 +125,6 @@ struct ChatChoice {
     #[serde(default)]
     delta: ChatDelta,
     #[serde(default)]
-    #[allow(dead_code)]
     finish_reason: Option<String>,
 }
 
@@ -140,6 +168,7 @@ struct PendingToolCall {
 struct ParsedChunk {
     text: Option<String>,
     tool_calls: Option<Vec<ChatDeltaToolCall>>,
+    finish_reason: Option<String>,
 }
 
 struct LiveAttempt {
@@ -198,31 +227,297 @@ fn failure_kind(error: &reqwest_eventsource::Error) -> ownterm_provider::Attempt
     }
 }
 
-pub(super) fn generate(
-    params: RequestParams,
-    cancellation_rx: futures::channel::oneshot::Receiver<()>,
-) -> Result<ResponseStream, ConvertToAPITypeError> {
-    let prompt = params
-        .input
+/// The task messages one request adds before the model answers, and the chat history sent to the
+/// model.
+#[derive(Debug)]
+struct TurnPlan {
+    task_id: String,
+    opening_actions: Vec<ClientAction>,
+    messages: Vec<ChatMessage>,
+    /// The latest user query, which model routing classifies.
+    routing_prompt: String,
+}
+
+/// Plans a request the way the hosted agent service would. No server echoes the request back, so
+/// this creates the root task on the first turn and records the incoming query or tool results as
+/// task messages; later turns read the conversation from those messages.
+fn plan_turn(
+    tasks: &[Task],
+    input: Vec<AIAgentInput>,
+    request_id: &str,
+) -> Result<TurnPlan, ConvertToAPITypeError> {
+    let root_task = tasks
         .iter()
-        .rev()
-        .find_map(|input| input.display_query())
-        .ok_or_else(|| anyhow!("OwnTerm direct inference requires a user prompt"))?;
-    let task_id = params
-        .tasks
-        .first()
+        .find(|task| {
+            task.dependencies
+                .as_ref()
+                .is_none_or(|dependencies| dependencies.parent_task_id.is_empty())
+        })
+        .or(tasks.first());
+    let task_id = root_task
         .map(|task| task.id.clone())
         .unwrap_or_else(|| Uuid::new_v4().to_string());
+    let new_messages = input_messages(convert_input(input)?, &task_id, request_id)?;
+
+    let mut opening_actions = Vec::new();
+    if root_task.is_none() {
+        opening_actions.push(ClientAction {
+            action: Some(client_action::Action::CreateTask(CreateTask {
+                task: Some(Task {
+                    id: task_id.clone(),
+                    ..Default::default()
+                }),
+            })),
+        });
+    }
+    if !new_messages.is_empty() {
+        opening_actions.push(add_messages_action(&task_id, new_messages.clone()));
+    }
+
+    let history: Vec<&Message> = root_task
+        .into_iter()
+        .flat_map(|task| &task.messages)
+        .chain(&new_messages)
+        .collect();
+    let routing_prompt = history
+        .iter()
+        .rev()
+        .find_map(|message| {
+            let MessageKind::UserQuery(query) = message.message.as_ref()? else {
+                return None;
+            };
+            (!query.query.trim().is_empty()).then(|| query.query.clone())
+        })
+        .ok_or_else(|| anyhow!("OwnTerm direct inference requires a user prompt"))?;
+
+    Ok(TurnPlan {
+        task_id,
+        opening_actions,
+        messages: fit_history(build_chat_messages(&history), max_history_chars()),
+        routing_prompt,
+    })
+}
+
+/// Converts a request's input into the task messages the hosted service would echo back.
+fn input_messages(
+    input: request::Input,
+    task_id: &str,
+    request_id: &str,
+) -> Result<Vec<Message>, ConvertToAPITypeError> {
+    // The request carries one context for all of its inputs; the first message records it.
+    let mut context = input.context;
+    let mut kinds = Vec::new();
+    match input.r#type {
+        Some(RequestInputType::UserInputs(inputs)) => {
+            for input in inputs.inputs {
+                match input.input {
+                    Some(UserInput::UserQuery(query)) => {
+                        kinds.push(user_query_kind(query, context.take()));
+                    }
+                    Some(UserInput::CliAgentUserQuery(query)) => {
+                        if let Some(query) = query.user_query {
+                            kinds.push(user_query_kind(query, context.take()));
+                        }
+                    }
+                    Some(UserInput::ToolCallResult(result)) => {
+                        kinds.push(MessageKind::ToolCallResult(ToolCallResult {
+                            tool_call_id: result.tool_call_id,
+                            context: context.take(),
+                            result: Some(
+                                result
+                                    .result
+                                    .map(message_tool_result)
+                                    .unwrap_or(ToolResult::Cancel(())),
+                            ),
+                        }));
+                    }
+                    Some(
+                        UserInput::MessagesReceivedFromAgents(_)
+                        | UserInput::EventsFromAgents(_)
+                        | UserInput::PassiveSuggestionResult(_)
+                        | UserInput::OrchestrationConfigUpdate(_)
+                        | UserInput::ConversationHandoff(_)
+                        | UserInput::AgentWake(_),
+                    )
+                    | None => {}
+                }
+            }
+        }
+        Some(RequestInputType::QueryWithCannedResponse(query)) => {
+            kinds.push(plain_query_kind(query.query, context.take()));
+        }
+        Some(RequestInputType::AutoCodeDiffQuery(query)) => {
+            kinds.push(plain_query_kind(query.query, context.take()));
+        }
+        Some(RequestInputType::CreateNewProject(query)) => {
+            kinds.push(plain_query_kind(query.query, context.take()));
+        }
+        Some(RequestInputType::ResumeConversation(_)) => {}
+        // Every other request type asks for a hosted-service feature (passive suggestions,
+        // summaries, cloud environments, skills) that has no local counterpart.
+        _ => {
+            return Err(anyhow!("The local agent does not support this kind of request").into());
+        }
+    }
+    Ok(kinds
+        .into_iter()
+        .map(|kind| new_message(task_id, request_id, Uuid::new_v4().to_string(), kind))
+        .collect())
+}
+
+fn user_query_kind(query: RequestUserQuery, context: Option<InputContext>) -> MessageKind {
+    MessageKind::UserQuery(UserQuery {
+        query: query.query,
+        context,
+        referenced_attachments: query.referenced_attachments,
+        mode: query.mode,
+        intended_agent: query.intended_agent,
+        origin: query.origin,
+        author: query.author,
+        source_message: query.source_message,
+    })
+}
+
+fn plain_query_kind(query: String, context: Option<InputContext>) -> MessageKind {
+    MessageKind::UserQuery(UserQuery {
+        query,
+        context,
+        ..Default::default()
+    })
+}
+
+fn message_tool_result(result: RequestToolResult) -> ToolResult {
+    match result {
+        RequestToolResult::RunShellCommand(r) => ToolResult::RunShellCommand(r),
+        RequestToolResult::ReadFiles(r) => ToolResult::ReadFiles(r),
+        RequestToolResult::SearchCodebase(r) => ToolResult::SearchCodebase(r),
+        RequestToolResult::ApplyFileDiffs(r) => ToolResult::ApplyFileDiffs(r),
+        RequestToolResult::SuggestPlan(r) => ToolResult::SuggestPlan(r),
+        RequestToolResult::SuggestCreatePlan(r) => ToolResult::SuggestCreatePlan(r),
+        RequestToolResult::Grep(r) => ToolResult::Grep(r),
+        #[allow(deprecated)]
+        RequestToolResult::FileGlob(r) => ToolResult::FileGlob(r),
+        RequestToolResult::ReadMcpResource(r) => ToolResult::ReadMcpResource(r),
+        RequestToolResult::CallMcpTool(r) => ToolResult::CallMcpTool(r),
+        RequestToolResult::WriteToLongRunningShellCommand(r) => {
+            ToolResult::WriteToLongRunningShellCommand(r)
+        }
+        RequestToolResult::SuggestNewConversation(r) => ToolResult::SuggestNewConversation(r),
+        RequestToolResult::FileGlobV2(r) => ToolResult::FileGlobV2(r),
+        RequestToolResult::SuggestPrompt(r) => ToolResult::SuggestPrompt(r),
+        RequestToolResult::OpenCodeReview(r) => ToolResult::OpenCodeReview(r),
+        RequestToolResult::InitProject(r) => ToolResult::InitProject(r),
+        RequestToolResult::ReadDocuments(r) => ToolResult::ReadDocuments(r),
+        RequestToolResult::EditDocuments(r) => ToolResult::EditDocuments(r),
+        RequestToolResult::CreateDocuments(r) => ToolResult::CreateDocuments(r),
+        RequestToolResult::ReadShellCommandOutput(r) => ToolResult::ReadShellCommandOutput(r),
+        RequestToolResult::UseComputer(r) => ToolResult::UseComputer(r),
+        RequestToolResult::InsertReviewComments(r) => ToolResult::InsertReviewComments(r),
+        RequestToolResult::RequestComputerUse(r) => ToolResult::RequestComputerUseResult(r),
+        RequestToolResult::ReadSkill(r) => ToolResult::ReadSkill(r),
+        RequestToolResult::FetchConversation(r) => ToolResult::FetchConversation(r),
+        RequestToolResult::SendMessageToAgent(r) => ToolResult::SendMessageToAgent(r),
+        RequestToolResult::TransferShellCommandControlToUser(r) => {
+            ToolResult::TransferShellCommandControlToUser(r)
+        }
+        RequestToolResult::AskUserQuestion(r) => ToolResult::AskUserQuestion(r),
+        RequestToolResult::UploadFileArtifact(r) => ToolResult::UploadFileArtifact(r),
+        RequestToolResult::RunAgentsResult(r) => ToolResult::RunAgentsResult(r),
+        RequestToolResult::WaitForEvents(r) => ToolResult::WaitForEvents(r),
+        RequestToolResult::StartRecording(r) => ToolResult::StartRecording(r),
+        RequestToolResult::StopRecording(r) => ToolResult::StopRecording(r),
+    }
+}
+
+pub(super) fn generate(
+    mut params: RequestParams,
+    cancellation_rx: futures::channel::oneshot::Receiver<()>,
+) -> Result<ResponseStream, ConvertToAPITypeError> {
     let request_id = Uuid::new_v4().to_string();
     let conversation_id = params
         .conversation_token
         .as_ref()
         .map(|token| token.as_str().to_owned())
         .unwrap_or_else(|| Uuid::new_v4().to_string());
+    let input = std::mem::take(&mut params.input);
+    let plan = plan_turn(&params.tasks, input, &request_id)?;
+    let attempts = live_attempts(&params, &plan.routing_prompt)?;
+    if attempts.is_empty() {
+        return Err(anyhow!("No model is available for this request").into());
+    }
+    Ok(stream_turn(
+        plan,
+        attempts,
+        request_id,
+        conversation_id,
+        cancellation_rx,
+    ))
+}
+
+/// Waits for the next stream item, or `None` when the endpoint stays silent for `idle`.
+async fn next_or_idle<S>(stream: &mut S, idle: Duration) -> Option<Option<S::Item>>
+where
+    S: futures::Stream + Unpin,
+{
+    match futures::future::select(stream.next(), Box::pin(Timer::after(idle))).await {
+        futures::future::Either::Left((item, _)) => Some(item),
+        futures::future::Either::Right(_) => None,
+    }
+}
+
+/// Merges one streamed tool-call fragment into the calls collected so far.
+fn merge_tool_call_delta(pending: &mut Vec<PendingToolCall>, delta: ChatDeltaToolCall) {
+    let id = delta.id.filter(|id| !id.is_empty());
+    let index = delta.index.unwrap_or_else(|| {
+        // Some servers omit the index; a fragment that names a different call id starts a new
+        // call, and anything else continues the latest one.
+        let starts_new_call = match (&id, pending.last()) {
+            (Some(id), Some(last)) => !last.id.is_empty() && last.id != *id,
+            (Some(_) | None, None) | (None, Some(_)) => false,
+        };
+        if starts_new_call {
+            pending.len()
+        } else {
+            pending.len().saturating_sub(1)
+        }
+    });
+    if index >= pending.len() {
+        pending.resize_with(index + 1, PendingToolCall::default);
+    }
+    let call = &mut pending[index];
+    // Servers that repeat the id or name on every fragment must not have them concatenated.
+    if let Some(id) = id
+        && call.id.is_empty()
+    {
+        call.id = id;
+    }
+    if let Some(function) = delta.function {
+        if let Some(name) = function.name.filter(|name| !name.is_empty())
+            && call.name.is_empty()
+        {
+            call.name = name;
+        }
+        if let Some(arguments) = function.arguments {
+            call.arguments.push_str(&arguments);
+        }
+    }
+}
+
+fn stream_turn(
+    plan: TurnPlan,
+    attempts: Vec<LiveAttempt>,
+    request_id: String,
+    conversation_id: String,
+    cancellation_rx: futures::channel::oneshot::Receiver<()>,
+) -> ResponseStream {
+    let TurnPlan {
+        task_id,
+        opening_actions,
+        messages,
+        routing_prompt: _,
+    } = plan;
     let message_id = Uuid::new_v4().to_string();
-    let messages = build_chat_messages(&params.tasks, &prompt);
     let tools = ownterm_tools();
-    let attempts = live_attempts(&params, &prompt)?;
 
     let output = async_stream::stream! {
         yield Ok(ResponseEvent {
@@ -232,33 +527,57 @@ pub(super) fn generate(
                 run_id: String::new(),
             })),
         });
+        if !opening_actions.is_empty() {
+            yield Ok(ResponseEvent {
+                r#type: Some(response_event::Type::ClientActions(
+                    response_event::ClientActions {
+                        actions: opening_actions,
+                    },
+                )),
+            });
+        }
 
         let client = http_client::Client::new_external();
         let mut started_message = false;
         let mut pending_tool_calls: Vec<PendingToolCall> = Vec::new();
+        let mut finish_reason: Option<String>;
         let mut attempt_at = 0usize;
+        let mut send_tools = true;
 
         'attempts: loop {
             let spec = &attempts[attempt_at];
             pending_tool_calls.clear();
+            finish_reason = None;
             let request = ChatCompletionsRequest {
                 model: spec.model.clone(),
                 messages: messages.clone(),
-                tools: tools.clone(),
+                tools: if send_tools { tools.clone() } else { Vec::new() },
                 tool_choice: None,
                 stream: true,
             };
-            let mut builder = client
-                .post(spec.endpoint.clone())
-                .timeout(std::time::Duration::from_secs(45))
-                .json(&request);
+            let mut builder = client.post(spec.endpoint.clone()).json(&request);
             if let Some(ref api_key) = spec.api_key {
                 builder = builder.bearer_auth(api_key);
             }
             let mut events = builder.eventsource();
             let mut committed = false;
 
-            while let Some(event) = events.next().await {
+            loop {
+                let Some(event) = next_or_idle(&mut events, STREAM_IDLE_TIMEOUT).await else {
+                    if !committed && attempt_at + 1 < attempts.len() {
+                        attempt_at += 1;
+                        send_tools = true;
+                        continue 'attempts;
+                    }
+                    yield Err(Arc::new(AIApiError::Other(anyhow!(
+                        "The model endpoint sent nothing for {} seconds",
+                        STREAM_IDLE_TIMEOUT.as_secs()
+                    ))));
+                    return;
+                };
+                let Some(event) = event else {
+                    break;
+                };
                 match event {
                     Ok(reqwest_eventsource::Event::Open) => {}
                     Ok(reqwest_eventsource::Event::Message(message)) => {
@@ -267,76 +586,73 @@ pub(super) fn generate(
                         }
                         match parse_streaming_chunk(&message.data) {
                             Ok(Some(parsed)) => {
+                                if let Some(reason) = parsed.finish_reason {
+                                    finish_reason = Some(reason);
+                                }
+                                if parsed.text.is_none() && parsed.tool_calls.is_none() {
+                                    continue;
+                                }
                                 if !committed && spec.announce {
                                     ownterm_provider::record_last_choice(&spec.reason);
-                                    yield Ok(client_action_event(add_text_action(
+                                    yield Ok(client_action_event(text_action(
+                                        &mut started_message,
                                         &task_id,
                                         &request_id,
                                         &message_id,
                                         format!("{}\n", spec.reason),
                                     )));
-                                    started_message = true;
                                 }
                                 committed = true;
                                 if let Some(text) = parsed.text {
-                                    let action = if started_message {
-                                        append_text_action(
-                                            &task_id,
-                                            &request_id,
-                                            &message_id,
-                                            text,
-                                        )
-                                    } else {
-                                        started_message = true;
-                                        add_text_action(
-                                            &task_id,
-                                            &request_id,
-                                            &message_id,
-                                            text,
-                                        )
-                                    };
-                                    yield Ok(client_action_event(action));
+                                    yield Ok(client_action_event(text_action(
+                                        &mut started_message,
+                                        &task_id,
+                                        &request_id,
+                                        &message_id,
+                                        text,
+                                    )));
                                 }
-                                if let Some(tool_calls) = parsed.tool_calls {
-                                    for delta_call in tool_calls {
-                                        let idx = delta_call.index.unwrap_or(0);
-                                        if idx >= pending_tool_calls.len() {
-                                            pending_tool_calls.resize_with(idx + 1, PendingToolCall::default);
-                                        }
-                                        let pending = &mut pending_tool_calls[idx];
-                                        if let Some(id) = delta_call.id {
-                                            pending.id.push_str(&id);
-                                        }
-                                        if let Some(func) = delta_call.function {
-                                            if let Some(name) = func.name {
-                                                pending.name.push_str(&name);
-                                            }
-                                            if let Some(args) = func.arguments {
-                                                pending.arguments.push_str(&args);
-                                            }
-                                        }
-                                    }
+                                for delta in parsed.tool_calls.into_iter().flatten() {
+                                    merge_tool_call_delta(&mut pending_tool_calls, delta);
                                 }
                             }
                             Ok(None) => {}
                             Err(error) => {
-                                if !committed
-                                    && attempt_at + 1 < attempts.len()
-                                {
+                                if !committed && attempt_at + 1 < attempts.len() {
                                     attempt_at += 1;
+                                    send_tools = true;
                                     continue 'attempts;
                                 }
-                                yield Err(Arc::new(AIApiError::Other(error)));
+                                yield Err(Arc::new(AIApiError::Other(anyhow!(
+                                    sanitize_error_message(
+                                        format!("{error:#}"),
+                                        spec.api_key.as_deref(),
+                                    )
+                                ))));
                                 return;
                             }
                         }
                     }
                     Err(error) => {
+                        // A model without tool support rejects any request that lists tools;
+                        // the same model can still answer in plain text.
+                        if !committed
+                            && send_tools
+                            && matches!(
+                                &error,
+                                reqwest_eventsource::Error::InvalidStatusCode(status, _)
+                                    if status.as_u16() == 400
+                            )
+                        {
+                            send_tools = false;
+                            continue 'attempts;
+                        }
                         if !committed
                             && attempt_at + 1 < attempts.len()
                             && ownterm_provider::should_fallback(failure_kind(&error))
                         {
                             attempt_at += 1;
+                            send_tools = true;
                             continue 'attempts;
                         }
                         let api_error =
@@ -356,33 +672,24 @@ pub(super) fn generate(
             break;
         }
 
-        if !pending_tool_calls.is_empty() {
-            let mut tool_messages = Vec::new();
-            for pending in pending_tool_calls {
-                if let Some(tool) = map_pending_tool_to_proto(&pending.name, &pending.arguments) {
-                    let tool_call_id = if pending.id.is_empty() {
-                        Uuid::new_v4().to_string()
-                    } else {
-                        pending.id
-                    };
-                    tool_messages.push(tool_call_message(
-                        &task_id,
-                        &request_id,
-                        tool_call_id,
-                        tool,
-                    ));
-                }
-            }
-            if !tool_messages.is_empty() {
-                yield Ok(client_action_event(ClientAction {
-                    action: Some(client_action::Action::AddMessagesToTask(
-                        AddMessagesToTask {
-                            task_id: task_id.clone(),
-                            messages: tool_messages,
-                        },
-                    )),
-                }));
-            }
+        let (tool_messages, notices) = finished_tool_calls(
+            pending_tool_calls,
+            finish_reason.as_deref(),
+            &task_id,
+            &request_id,
+        );
+        if !notices.is_empty() {
+            let separator = if started_message { "\n\n" } else { "" };
+            yield Ok(client_action_event(text_action(
+                &mut started_message,
+                &task_id,
+                &request_id,
+                &message_id,
+                format!("{separator}{}", notices.join("\n")),
+            )));
+        }
+        if !tool_messages.is_empty() {
+            yield Ok(client_action_event(add_messages_action(&task_id, tool_messages)));
         }
 
         yield Ok(ResponseEvent {
@@ -393,7 +700,53 @@ pub(super) fn generate(
         });
     };
 
-    Ok(Box::pin(output.take_until(cancellation_rx)))
+    Box::pin(output.take_until(cancellation_rx))
+}
+
+/// Turns the tool calls a finished stream collected into task messages. A call that cannot be
+/// run safely is dropped and explained in a notice instead.
+fn finished_tool_calls(
+    pending: Vec<PendingToolCall>,
+    finish_reason: Option<&str>,
+    task_id: &str,
+    request_id: &str,
+) -> (Vec<Message>, Vec<String>) {
+    let mut messages = Vec::new();
+    let mut notices = Vec::new();
+    let pending: Vec<_> = pending
+        .into_iter()
+        .filter(|call| !call.name.is_empty() || !call.arguments.is_empty())
+        .collect();
+    if finish_reason == Some("length") && !pending.is_empty() {
+        // The arguments of a call cut off by the output limit are incomplete.
+        notices.push(
+            "The model's reply hit its output limit before a tool call was complete, so the call was not run."
+                .to_owned(),
+        );
+        return (messages, notices);
+    }
+    for call in pending {
+        match local_tool_call(&call.name, &call.arguments) {
+            Ok(tool) => {
+                let tool_call_id = if call.id.is_empty() {
+                    Uuid::new_v4().to_string()
+                } else {
+                    call.id
+                };
+                messages.push(new_message(
+                    task_id,
+                    request_id,
+                    Uuid::new_v4().to_string(),
+                    MessageKind::ToolCall(ToolCall {
+                        tool_call_id,
+                        tool: Some(tool),
+                    }),
+                ));
+            }
+            Err(notice) => notices.push(notice),
+        }
+    }
+    (messages, notices)
 }
 
 impl OpenAiCompatibleConfig {
@@ -438,36 +791,92 @@ fn ownterm_tools() -> Vec<ToolDefinition> {
         .collect()
 }
 
-fn resolve_system_prompt() -> Option<String> {
-    if let Ok(env_prompt) = std::env::var("OWNTERM_SYSTEM_PROMPT") {
-        if !env_prompt.trim().is_empty() {
-            return Some(env_prompt.trim().to_owned());
+const DEFAULT_SYSTEM_PROMPT: &str = "You are OwnTerm, an open-source, local-first terminal assistant. You assist with coding, debugging, and terminal operations. Use the tools on this machine: run_shell_command, read_files, grep, file_glob, and apply_file_diffs. Search with grep or file_glob. Change a file with apply_file_diffs instead of printing a patch.";
+
+fn read_rules(path: &Path) -> Option<String> {
+    let content = std::fs::read_to_string(path).ok()?;
+    let content = content.trim();
+    (!content.is_empty()).then(|| content.to_owned())
+}
+
+/// Resolves the base instructions: `OWNTERM_SYSTEM_PROMPT`, then `.ownterm/rules.md` in the
+/// session's working directory, then `~/.ownterm/rules.md`, then the built-in prompt.
+fn resolve_base_prompt(working_directory: Option<&str>) -> String {
+    if let Ok(env_prompt) = std::env::var("OWNTERM_SYSTEM_PROMPT")
+        && !env_prompt.trim().is_empty()
+    {
+        return env_prompt.trim().to_owned();
+    }
+    let project_rules = working_directory
+        .filter(|directory| !directory.is_empty())
+        .map(|directory| Path::new(directory).join(".ownterm/rules.md"))
+        .unwrap_or_else(|| PathBuf::from(".ownterm/rules.md"));
+    read_rules(&project_rules)
+        .or_else(|| read_rules(&dirs::home_dir()?.join(".ownterm").join("rules.md")))
+        .unwrap_or_else(|| DEFAULT_SYSTEM_PROMPT.to_owned())
+}
+
+/// Builds the system message from the base instructions plus the session facts and project rule
+/// files in the conversation's latest context.
+fn system_prompt(context: Option<&InputContext>) -> String {
+    let working_directory = context
+        .and_then(|context| context.directory.as_ref())
+        .map(|directory| directory.pwd.as_str());
+    let mut prompt = resolve_base_prompt(working_directory);
+    let Some(context) = context else {
+        return prompt;
+    };
+
+    let mut facts = Vec::new();
+    if let Some(directory) = working_directory.filter(|directory| !directory.is_empty()) {
+        facts.push(format!("Working directory: {directory}"));
+    }
+    if let Some(os) = &context.operating_system {
+        let os = format!("{} {}", os.platform, os.distribution);
+        if !os.trim().is_empty() {
+            facts.push(format!("Operating system: {}", os.trim()));
         }
     }
-
-    let local_rules = std::path::Path::new(".ownterm/rules.md");
-    if local_rules.is_file() {
-        if let Ok(content) = std::fs::read_to_string(local_rules) {
-            if !content.trim().is_empty() {
-                return Some(content.trim().to_owned());
-            }
+    if let Some(shell) = &context.shell {
+        let shell = format!("{} {}", shell.name, shell.version);
+        if !shell.trim().is_empty() {
+            facts.push(format!("Shell: {}", shell.trim()));
         }
     }
-
-    if let Some(home) = dirs::home_dir() {
-        let home_rules = home.join(".ownterm").join("rules.md");
-        if home_rules.is_file() {
-            if let Ok(content) = std::fs::read_to_string(home_rules) {
-                if !content.trim().is_empty() {
-                    return Some(content.trim().to_owned());
-                }
-            }
-        }
+    if !facts.is_empty() {
+        prompt.push_str("\n\n");
+        prompt.push_str(&facts.join("\n"));
     }
+    for rule_file in context
+        .project_rules
+        .iter()
+        .flat_map(|rules| &rules.active_rule_files)
+    {
+        if rule_file.content.trim().is_empty() {
+            continue;
+        }
+        prompt.push_str(&format!(
+            "\n\nProject rules from {}:\n{}",
+            rule_file.file_path,
+            truncate_middle(rule_file.content.trim(), MAX_ATTACHMENT_CHARS)
+        ));
+    }
+    prompt
+}
 
-    Some(
-        "You are OwnTerm, an open-source, local-first terminal assistant. You assist with coding, debugging, and terminal operations. Use the tools on this machine: run_shell_command, read_files, grep, file_glob, and apply_file_diffs. Search with grep or file_glob. Change a file with apply_file_diffs instead of printing a patch."
-            .to_owned(),
+/// Keeps the start and end of `text` when it is longer than `max_chars`.
+fn truncate_middle(text: &str, max_chars: usize) -> String {
+    let total = text.chars().count();
+    if total <= max_chars {
+        return text.to_owned();
+    }
+    let head_len = max_chars * 2 / 3;
+    let tail_len = max_chars - head_len;
+    let head: String = text.chars().take(head_len).collect();
+    let tail: String = text.chars().skip(total - tail_len).collect();
+    format!(
+        "{head}\n[... {} characters omitted ...]\n{tail}",
+        total - max_chars
     )
 }
 
@@ -487,233 +896,408 @@ fn parse_streaming_chunk(data: &str) -> anyhow::Result<Option<ParsedChunk>> {
     };
     let text = choice.delta.content.filter(|s| !s.is_empty());
     let tool_calls = choice.delta.tool_calls.filter(|t| !t.is_empty());
-    if text.is_none() && tool_calls.is_none() {
+    let finish_reason = choice.finish_reason.filter(|reason| !reason.is_empty());
+    if text.is_none() && tool_calls.is_none() && finish_reason.is_none() {
         return Ok(None);
     }
-    Ok(Some(ParsedChunk { text, tool_calls }))
+    Ok(Some(ParsedChunk {
+        text,
+        tool_calls,
+        finish_reason,
+    }))
 }
 
-fn map_pending_tool_to_proto(name: &str, arguments_json: &str) -> Option<Tool> {
+/// Maps a model tool call to a client tool. The error is a notice for the user: a call with an
+/// unknown name, malformed arguments, or nothing to do is never run.
+fn local_tool_call(name: &str, arguments_json: &str) -> Result<Tool, String> {
+    let arguments = arguments_json.trim();
+    if (arguments.starts_with('{') || arguments.starts_with('['))
+        && serde_json::from_str::<serde_json::Value>(arguments).is_err()
+    {
+        return Err(format!(
+            "The model sent malformed arguments for `{name}`, so the call was not run."
+        ));
+    }
     let Some(tool) = ownterm_provider::parse_local_agent_tool(name, arguments_json) else {
-        return Some(Tool::RunShellCommand(RunShellCommand {
-            command: format!("{name} {arguments_json}"),
-            ..Default::default()
-        }));
+        return Err(format!(
+            "The model called `{name}`, which is not a tool OwnTerm provides, so the call was not run."
+        ));
     };
-    Some(match tool {
+    let empty =
+        || format!("The model called `{name}` without usable arguments, so the call was not run.");
+    Ok(match tool {
         ownterm_provider::LocalAgentTool::Shell { command } => {
+            if command.trim().is_empty() {
+                return Err(empty());
+            }
             Tool::RunShellCommand(RunShellCommand {
                 command,
                 ..Default::default()
             })
         }
-        ownterm_provider::LocalAgentTool::ReadFiles { files } => Tool::ReadFiles(ReadFiles {
-            files: files
-                .into_iter()
-                .map(|name| ReadFilesFile {
-                    name,
-                    line_ranges: Vec::new(),
-                })
-                .collect(),
-        }),
+        ownterm_provider::LocalAgentTool::ReadFiles { files } => {
+            if files.is_empty() {
+                return Err(empty());
+            }
+            Tool::ReadFiles(ReadFiles {
+                files: files
+                    .into_iter()
+                    .map(|name| ReadFilesFile {
+                        name,
+                        line_ranges: Vec::new(),
+                    })
+                    .collect(),
+            })
+        }
         ownterm_provider::LocalAgentTool::Grep { queries, path } => {
+            if queries.is_empty() {
+                return Err(empty());
+            }
             Tool::Grep(Grep { queries, path })
         }
         ownterm_provider::LocalAgentTool::Glob {
             patterns,
             search_dir,
-        } => Tool::FileGlobV2(FileGlobV2 {
-            patterns,
-            search_dir,
-            ..Default::default()
-        }),
+        } => {
+            if patterns.is_empty() {
+                return Err(empty());
+            }
+            Tool::FileGlobV2(FileGlobV2 {
+                patterns,
+                search_dir,
+                ..Default::default()
+            })
+        }
         ownterm_provider::LocalAgentTool::Edit {
             summary,
             replacements,
             new_files,
             deleted_files,
-        } => Tool::ApplyFileDiffs(ApplyFileDiffs {
-            summary,
-            diffs: replacements
-                .into_iter()
-                .map(|edit| FileDiff {
-                    file_path: edit.file_path,
-                    search: edit.search,
-                    replace: edit.replace,
-                })
-                .collect(),
-            new_files: new_files
-                .into_iter()
-                .map(|file| NewFile {
-                    file_path: file.file_path,
-                    content: file.content,
-                    allow_overwrite: false,
-                })
-                .collect(),
-            deleted_files: deleted_files
-                .into_iter()
-                .map(|file_path| DeleteFile { file_path })
-                .collect(),
-            ..Default::default()
-        }),
+        } => {
+            if replacements.is_empty() && new_files.is_empty() && deleted_files.is_empty() {
+                return Err(empty());
+            }
+            Tool::ApplyFileDiffs(ApplyFileDiffs {
+                summary,
+                diffs: replacements
+                    .into_iter()
+                    .map(|edit| FileDiff {
+                        file_path: edit.file_path,
+                        search: edit.search,
+                        replace: edit.replace,
+                    })
+                    .collect(),
+                new_files: new_files
+                    .into_iter()
+                    .map(|file| NewFile {
+                        file_path: file.file_path,
+                        content: file.content,
+                        allow_overwrite: false,
+                    })
+                    .collect(),
+                deleted_files: deleted_files
+                    .into_iter()
+                    .map(|file_path| DeleteFile { file_path })
+                    .collect(),
+                ..Default::default()
+            })
+        }
     })
 }
 
-fn build_chat_messages(tasks: &[warp_multi_agent_api::Task], prompt: &str) -> Vec<ChatMessage> {
-    let mut messages = Vec::new();
-    if let Some(system_prompt) = resolve_system_prompt() {
-        messages.push(ChatMessage {
-            role: "system".to_owned(),
-            content: Some(system_prompt),
+impl ChatMessage {
+    fn text(role: &str, content: String) -> Self {
+        Self {
+            role: role.to_owned(),
+            content: Some(content),
             tool_calls: None,
             tool_call_id: None,
-        });
-    }
-
-    for task in tasks {
-        for message in &task.messages {
-            match &message.message {
-                Some(MessageKind::UserQuery(uq)) if !uq.query.trim().is_empty() => {
-                    messages.push(ChatMessage {
-                        role: "user".to_owned(),
-                        content: Some(uq.query.clone()),
-                        tool_calls: None,
-                        tool_call_id: None,
-                    });
-                }
-                Some(MessageKind::AgentOutput(ao)) if !ao.text.trim().is_empty() => {
-                    messages.push(ChatMessage {
-                        role: "assistant".to_owned(),
-                        content: Some(ao.text.clone()),
-                        tool_calls: None,
-                        tool_call_id: None,
-                    });
-                }
-                Some(MessageKind::ToolCall(tc)) => {
-                    let (name, arguments) = match &tc.tool {
-                        Some(Tool::RunShellCommand(cmd)) => (
-                            "run_shell_command",
-                            serde_json::to_string(&serde_json::json!({ "command": cmd.command }))
-                                .unwrap_or_default(),
-                        ),
-                        Some(Tool::ReadFiles(rf)) => {
-                            let files: Vec<&str> =
-                                rf.files.iter().map(|f| f.name.as_str()).collect();
-                            (
-                                "read_files",
-                                serde_json::to_string(&serde_json::json!({ "files": files }))
-                                    .unwrap_or_default(),
-                            )
-                        }
-                        Some(Tool::Grep(grep)) => (
-                            "grep",
-                            serde_json::to_string(&serde_json::json!({
-                                "queries": grep.queries,
-                                "path": grep.path,
-                            }))
-                            .unwrap_or_default(),
-                        ),
-                        Some(Tool::FileGlobV2(glob)) => (
-                            "file_glob",
-                            serde_json::to_string(&serde_json::json!({
-                                "patterns": glob.patterns,
-                                "search_dir": glob.search_dir,
-                            }))
-                            .unwrap_or_default(),
-                        ),
-                        Some(Tool::ApplyFileDiffs(diffs)) => (
-                            "apply_file_diffs",
-                            serde_json::to_string(&serde_json::json!({
-                                "summary": diffs.summary,
-                                "diffs": diffs.diffs.iter().map(|diff| serde_json::json!({
-                                    "file_path": diff.file_path,
-                                    "search": diff.search,
-                                    "replace": diff.replace,
-                                })).collect::<Vec<_>>(),
-                                "new_files": diffs.new_files.iter().map(|file| serde_json::json!({
-                                    "file_path": file.file_path,
-                                    "content": file.content,
-                                })).collect::<Vec<_>>(),
-                                "deleted_files": diffs.deleted_files.iter().map(|file| file.file_path.clone()).collect::<Vec<_>>(),
-                            }))
-                            .unwrap_or_default(),
-                        ),
-                        Some(Tool::CallMcpTool(mcp)) => (mcp.name.as_str(), "{}".to_owned()),
-                        _ => ("generic_tool", "{}".to_owned()),
-                    };
-                    messages.push(ChatMessage {
-                        role: "assistant".to_owned(),
-                        content: None,
-                        tool_calls: Some(vec![OpenAiToolCall {
-                            id: tc.tool_call_id.clone(),
-                            r#type: "function".to_owned(),
-                            function: OpenAiFunctionCall {
-                                name: name.to_owned(),
-                                arguments,
-                            },
-                        }]),
-                        tool_call_id: None,
-                    });
-                }
-                Some(MessageKind::ToolCallResult(tcr)) => {
-                    let content = match &tcr.result {
-                        Some(ToolResult::RunShellCommand(res)) =>
-                        {
-                            #[allow(deprecated)]
-                            if res.exit_code == 0 {
-                                res.output.clone()
-                            } else {
-                                format!("(exit code: {})\n{}", res.exit_code, res.output)
-                            }
-                        }
-                        Some(ToolResult::ReadFiles(res)) => match &res.result {
-                            Some(
-                                warp_multi_agent_api::read_files_result::Result::TextFilesSuccess(
-                                    success,
-                                ),
-                            ) => {
-                                let mut out = String::new();
-                                for f in &success.files {
-                                    out.push_str(&format!("--- {}\n{}\n", f.file_path, f.content));
-                                }
-                                out
-                            }
-                            Some(warp_multi_agent_api::read_files_result::Result::Error(err)) => {
-                                format!("Error reading files: {}", err.message)
-                            }
-                            _ => "Files read successfully".to_owned(),
-                        },
-                        Some(ToolResult::Grep(result)) => format_grep_result(result),
-                        Some(ToolResult::FileGlobV2(result)) => format_glob_result(result),
-                        Some(ToolResult::ApplyFileDiffs(result)) => format_diff_result(result),
-                        _ => "Tool executed successfully".to_owned(),
-                    };
-                    messages.push(ChatMessage {
-                        role: "tool".to_owned(),
-                        content: Some(content),
-                        tool_calls: None,
-                        tool_call_id: Some(tcr.tool_call_id.clone()),
-                    });
-                }
-                _ => {}
-            }
         }
     }
 
-    let last_matches_prompt = messages
+    fn tool_result(tool_call_id: String, content: String) -> Self {
+        Self {
+            role: "tool".to_owned(),
+            content: Some(content),
+            tool_calls: None,
+            tool_call_id: Some(tool_call_id),
+        }
+    }
+}
+
+fn message_context(message: &Message) -> Option<&InputContext> {
+    match message.message.as_ref()? {
+        MessageKind::UserQuery(query) => query.context.as_ref(),
+        MessageKind::ToolCallResult(result) => result.context.as_ref(),
+        _ => None,
+    }
+}
+
+/// Builds the chat history from task messages, in the shape `/chat/completions` accepts: the tool
+/// calls of one reply share an assistant message, and each of them is answered by a tool message.
+fn build_chat_messages(history: &[&Message]) -> Vec<ChatMessage> {
+    let latest_context = history
         .iter()
         .rev()
-        .find(|m| m.role == "user")
-        .is_some_and(|m| m.content.as_deref() == Some(prompt));
-    if !last_matches_prompt {
-        messages.push(ChatMessage {
-            role: "user".to_owned(),
-            content: Some(prompt.to_owned()),
-            tool_calls: None,
-            tool_call_id: None,
-        });
+        .find_map(|message| message_context(message));
+    let mut messages = vec![ChatMessage::text("system", system_prompt(latest_context))];
+
+    for message in history {
+        match &message.message {
+            Some(MessageKind::UserQuery(query)) if !query.query.trim().is_empty() => {
+                messages.push(ChatMessage::text("user", render_user_query(query)));
+            }
+            Some(MessageKind::AgentOutput(output)) if !output.text.trim().is_empty() => {
+                messages.push(ChatMessage::text("assistant", output.text.clone()));
+            }
+            Some(MessageKind::ToolCall(tool_call)) => {
+                let (name, arguments) = tool_call_request(tool_call);
+                let call = OpenAiToolCall {
+                    id: tool_call.tool_call_id.clone(),
+                    r#type: "function".to_owned(),
+                    function: OpenAiFunctionCall { name, arguments },
+                };
+                match messages.last_mut() {
+                    Some(last) if last.role == "assistant" => {
+                        last.tool_calls.get_or_insert_default().push(call);
+                    }
+                    Some(_) | None => messages.push(ChatMessage {
+                        role: "assistant".to_owned(),
+                        content: None,
+                        tool_calls: Some(vec![call]),
+                        tool_call_id: None,
+                    }),
+                }
+            }
+            Some(MessageKind::ToolCallResult(result)) => {
+                messages.push(ChatMessage::tool_result(
+                    result.tool_call_id.clone(),
+                    truncate_middle(&render_tool_result(result), MAX_TOOL_OUTPUT_CHARS),
+                ));
+            }
+            _ => {}
+        }
+    }
+    pair_tool_calls_with_results(messages)
+}
+
+fn max_history_chars() -> usize {
+    std::env::var("OWNTERM_MAX_HISTORY_CHARS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(DEFAULT_MAX_HISTORY_CHARS)
+}
+
+fn chat_message_chars(message: &ChatMessage) -> usize {
+    let content = message.content.as_deref().map_or(0, str::len);
+    let calls: usize = message
+        .tool_calls
+        .iter()
+        .flatten()
+        .map(|call| call.function.name.len() + call.function.arguments.len())
+        .sum();
+    content + calls
+}
+
+/// Drops the oldest turns until the history fits `max_chars`. A turn starts at a user message, so
+/// a tool call is never separated from its result; the system message and the latest turn stay.
+fn fit_history(mut messages: Vec<ChatMessage>, max_chars: usize) -> Vec<ChatMessage> {
+    let mut total: usize = messages.iter().map(chat_message_chars).sum();
+    while total > max_chars {
+        let turn_starts: Vec<usize> = messages
+            .iter()
+            .enumerate()
+            .filter(|(_, message)| message.role == "user")
+            .map(|(index, _)| index)
+            .collect();
+        let [first, second, ..] = turn_starts[..] else {
+            break;
+        };
+        total -= messages
+            .drain(first..second)
+            .map(|message| chat_message_chars(&message))
+            .sum::<usize>();
     }
     messages
+}
+
+/// Reorders tool messages to follow the assistant message that made their calls, answers calls
+/// that never got a result, and drops results with no call. Strict servers reject anything else.
+fn pair_tool_calls_with_results(messages: Vec<ChatMessage>) -> Vec<ChatMessage> {
+    let mut results: HashMap<String, String> = HashMap::new();
+    for message in &messages {
+        if let (Some(id), Some(content)) = (&message.tool_call_id, &message.content) {
+            results.insert(id.clone(), content.clone());
+        }
+    }
+    let mut paired = Vec::with_capacity(messages.len());
+    for message in messages {
+        if message.tool_call_id.is_some() {
+            continue;
+        }
+        let call_ids: Vec<String> = message
+            .tool_calls
+            .iter()
+            .flatten()
+            .map(|call| call.id.clone())
+            .collect();
+        paired.push(message);
+        for id in call_ids {
+            let content = results.remove(&id).unwrap_or_else(|| {
+                "No result: the call was cancelled before it finished.".to_owned()
+            });
+            paired.push(ChatMessage::tool_result(id, content));
+        }
+    }
+    paired
+}
+
+fn render_user_query(query: &UserQuery) -> String {
+    let Some(context) = &query.context else {
+        return query.query.clone();
+    };
+    let mut attached = Vec::new();
+    for selection in &context.selected_text {
+        if !selection.text.trim().is_empty() {
+            attached.push(format!(
+                "Selected text:\n{}",
+                truncate_middle(&selection.text, MAX_ATTACHMENT_CHARS)
+            ));
+        }
+    }
+    #[allow(deprecated)]
+    let blocks = &context.executed_shell_commands;
+    for command in blocks {
+        attached.push(format!(
+            "Terminal block:\n$ {}\n{}\n(exit code {})",
+            command.command,
+            truncate_middle(command.output.trim_end(), MAX_ATTACHMENT_CHARS),
+            command.exit_code
+        ));
+    }
+    for file in context
+        .files
+        .iter()
+        .filter_map(|file| file.content.as_ref())
+    {
+        attached.push(format!(
+            "File {}:\n{}",
+            file.file_path,
+            truncate_middle(&file.content, MAX_ATTACHMENT_CHARS)
+        ));
+    }
+    if attached.is_empty() {
+        return query.query.clone();
+    }
+    format!(
+        "{}\n\nAttached context:\n\n{}",
+        query.query,
+        attached.join("\n\n")
+    )
+}
+
+/// The function name and JSON arguments that reproduce a recorded tool call for the model.
+fn tool_call_request(tool_call: &ToolCall) -> (String, String) {
+    let (name, arguments) = match &tool_call.tool {
+        Some(Tool::RunShellCommand(command)) => (
+            "run_shell_command",
+            serde_json::json!({ "command": command.command }),
+        ),
+        Some(Tool::ReadFiles(read)) => (
+            "read_files",
+            serde_json::json!({
+                "files": read.files.iter().map(|file| file.name.as_str()).collect::<Vec<_>>(),
+            }),
+        ),
+        Some(Tool::Grep(grep)) => (
+            "grep",
+            serde_json::json!({ "queries": grep.queries, "path": grep.path }),
+        ),
+        Some(Tool::FileGlobV2(glob)) => (
+            "file_glob",
+            serde_json::json!({ "patterns": glob.patterns, "search_dir": glob.search_dir }),
+        ),
+        Some(Tool::ApplyFileDiffs(diffs)) => (
+            "apply_file_diffs",
+            serde_json::json!({
+                "summary": diffs.summary,
+                "diffs": diffs.diffs.iter().map(|diff| serde_json::json!({
+                    "file_path": diff.file_path,
+                    "search": diff.search,
+                    "replace": diff.replace,
+                })).collect::<Vec<_>>(),
+                "new_files": diffs.new_files.iter().map(|file| serde_json::json!({
+                    "file_path": file.file_path,
+                    "content": file.content,
+                })).collect::<Vec<_>>(),
+                "deleted_files": diffs
+                    .deleted_files
+                    .iter()
+                    .map(|file| file.file_path.as_str())
+                    .collect::<Vec<_>>(),
+            }),
+        ),
+        // The local agent only issues the calls above; anything else comes from a conversation
+        // recorded by another agent and is replayed without arguments.
+        _ => ("unsupported_tool", serde_json::json!({})),
+    };
+    (name.to_owned(), arguments.to_string())
+}
+
+fn render_tool_result(result: &ToolCallResult) -> String {
+    match &result.result {
+        Some(ToolResult::RunShellCommand(result)) => render_shell_result(result),
+        Some(ToolResult::ReadFiles(result)) => match &result.result {
+            Some(read_files_result::Result::TextFilesSuccess(success)) => success
+                .files
+                .iter()
+                .map(|file| format!("--- {}\n{}\n", file.file_path, file.content))
+                .collect(),
+            Some(read_files_result::Result::Error(error)) => {
+                format!("Error reading files: {}", error.message)
+            }
+            _ => "The files were read, but their content is not text.".to_owned(),
+        },
+        Some(ToolResult::Grep(result)) => format_grep_result(result),
+        Some(ToolResult::FileGlobV2(result)) => format_glob_result(result),
+        Some(ToolResult::ApplyFileDiffs(result)) => format_diff_result(result),
+        Some(ToolResult::Cancel(())) | None => {
+            "The user cancelled this tool call. Do not retry it unless asked.".to_owned()
+        }
+        // Results of tools the local agent does not offer.
+        Some(_) => "The tool finished, but its result cannot be shown to this model.".to_owned(),
+    }
+}
+
+fn render_shell_result(result: &RunShellCommandResult) -> String {
+    match &result.result {
+        Some(run_shell_command_result::Result::CommandFinished(finished)) => {
+            if finished.exit_code == 0 {
+                finished.output.clone()
+            } else {
+                format!("(exit code: {})\n{}", finished.exit_code, finished.output)
+            }
+        }
+        Some(run_shell_command_result::Result::LongRunningCommandSnapshot(snapshot)) => format!(
+            "The command is still running. Output so far:\n{}",
+            snapshot.output
+        ),
+        Some(run_shell_command_result::Result::PermissionDenied(_)) => {
+            "The user did not allow this command to run.".to_owned()
+        }
+        Some(run_shell_command_result::Result::TerminalBusy(_)) => {
+            "The terminal is busy with another command, so this one did not run.".to_owned()
+        }
+        None =>
+        {
+            #[allow(deprecated)]
+            if result.exit_code == 0 {
+                result.output.clone()
+            } else {
+                format!("(exit code: {})\n{}", result.exit_code, result.output)
+            }
+        }
+    }
 }
 
 fn format_grep_result(result: &warp_multi_agent_api::GrepResult) -> String {
@@ -787,33 +1371,40 @@ fn sanitize_error_message(mut message: String, api_key: Option<&str>) -> String 
     message
 }
 
-fn add_text_action(
-    task_id: &str,
-    request_id: &str,
-    message_id: &str,
-    text: String,
-) -> ClientAction {
+fn add_messages_action(task_id: &str, messages: Vec<Message>) -> ClientAction {
     ClientAction {
         action: Some(client_action::Action::AddMessagesToTask(
             AddMessagesToTask {
                 task_id: task_id.to_owned(),
-                messages: vec![text_message(task_id, request_id, message_id, text)],
+                messages,
             },
         )),
     }
 }
 
-fn append_text_action(
+/// Streams agent text: the first chunk adds the message and later chunks append to it.
+fn text_action(
+    started_message: &mut bool,
     task_id: &str,
     request_id: &str,
     message_id: &str,
     text: String,
 ) -> ClientAction {
+    let message = new_message(
+        task_id,
+        request_id,
+        message_id.to_owned(),
+        MessageKind::AgentOutput(AgentOutput { text }),
+    );
+    if !*started_message {
+        *started_message = true;
+        return add_messages_action(task_id, vec![message]);
+    }
     ClientAction {
         action: Some(client_action::Action::AppendToMessageContent(
             AppendToMessageContent {
                 task_id: task_id.to_owned(),
-                message: Some(text_message(task_id, request_id, message_id, text)),
+                message: Some(message),
                 mask: Some(FieldMask {
                     paths: vec![AGENT_OUTPUT_TEXT_PATH.to_owned()],
                 }),
@@ -822,27 +1413,13 @@ fn append_text_action(
     }
 }
 
-fn text_message(task_id: &str, request_id: &str, message_id: &str, text: String) -> Message {
+fn new_message(task_id: &str, request_id: &str, id: String, kind: MessageKind) -> Message {
     Message {
-        id: message_id.to_owned(),
+        id,
         task_id: task_id.to_owned(),
         request_id: request_id.to_owned(),
         timestamp: Some(prost_types::Timestamp::from(SystemTime::now())),
-        message: Some(MessageKind::AgentOutput(AgentOutput { text })),
-        ..Default::default()
-    }
-}
-
-fn tool_call_message(task_id: &str, request_id: &str, tool_call_id: String, tool: Tool) -> Message {
-    Message {
-        id: Uuid::new_v4().to_string(),
-        task_id: task_id.to_owned(),
-        request_id: request_id.to_owned(),
-        timestamp: Some(prost_types::Timestamp::from(SystemTime::now())),
-        message: Some(MessageKind::ToolCall(ToolCall {
-            tool_call_id,
-            tool: Some(tool),
-        })),
+        message: Some(kind),
         ..Default::default()
     }
 }
@@ -858,258 +1435,5 @@ fn client_action_event(action: ClientAction) -> ResponseEvent {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn builds_chat_completions_url_from_api_root() {
-        assert_eq!(
-            chat_completions_url("https://example.com/v1")
-                .unwrap()
-                .as_str(),
-            "https://example.com/v1/chat/completions"
-        );
-    }
-
-    #[test]
-    fn preserves_complete_chat_completions_url() {
-        assert_eq!(
-            chat_completions_url("https://example.com/v1/chat/completions")
-                .unwrap()
-                .as_str(),
-            "https://example.com/v1/chat/completions"
-        );
-    }
-
-    #[test]
-    fn rejects_plain_http_for_remote_hosts() {
-        assert!(chat_completions_url("http://example.com/v1").is_err());
-        assert!(chat_completions_url("http://127.0.0.1:11434/v1").is_ok());
-    }
-
-    #[test]
-    fn parses_streaming_text_delta() {
-        let chunk = parse_streaming_chunk(r#"{"choices":[{"delta":{"content":"hola"}}]}"#).unwrap();
-        assert_eq!(chunk.unwrap().text, Some("hola".to_owned()));
-    }
-
-    #[test]
-    fn accepts_role_only_streaming_chunk() {
-        let chunk =
-            parse_streaming_chunk(r#"{"choices":[{"delta":{"role":"assistant"}}]}"#).unwrap();
-        assert!(chunk.is_none());
-    }
-
-    #[test]
-    fn parses_streaming_tool_call_delta() {
-        let chunk = parse_streaming_chunk(
-            r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"run_shell_command","arguments":"{\"command\":\"ls\"}"}}]}}]}"#,
-        )
-        .unwrap()
-        .unwrap();
-
-        let tool_calls = chunk.tool_calls.expect("expected tool calls");
-        assert_eq!(tool_calls.len(), 1);
-        assert_eq!(tool_calls[0].id.as_deref(), Some("call_1"));
-        let func = tool_calls[0].function.as_ref().unwrap();
-        assert_eq!(func.name.as_deref(), Some("run_shell_command"));
-        assert_eq!(func.arguments.as_deref(), Some("{\"command\":\"ls\"}"));
-    }
-
-    #[test]
-    fn parses_streaming_error_payload() {
-        let err = parse_streaming_chunk(
-            r#"{"error":{"message":"Incorrect API key provided","type":"invalid_request_error"}}"#,
-        )
-        .unwrap_err();
-        assert!(err.to_string().contains("Incorrect API key provided"));
-    }
-
-    #[test]
-    fn redacts_api_key_from_error_message() {
-        let secret = "sk-proj-supersecret123456789";
-        let raw_error = format!("Authentication error with key {secret}: invalid credentials");
-        let sanitized = sanitize_error_message(raw_error, Some(secret));
-        assert!(!sanitized.contains(secret));
-        assert!(sanitized.contains("[REDACTED]"));
-    }
-
-    #[test]
-    fn maps_pending_tool_to_shell_command() {
-        let tool = map_pending_tool_to_proto("run_shell_command", r#"{"command":"cargo check"}"#);
-        assert!(matches!(
-            tool,
-            Some(Tool::RunShellCommand(cmd)) if cmd.command == "cargo check"
-        ));
-    }
-
-    #[test]
-    fn maps_grep_glob_and_search_replace() {
-        match map_pending_tool_to_proto("grep", r#"{"queries":["fn main"],"path":"src"}"#) {
-            Some(Tool::Grep(grep)) => {
-                assert_eq!(grep.queries, vec!["fn main".to_owned()]);
-                assert_eq!(grep.path, "src");
-            }
-            other => panic!("expected grep, got {other:?}"),
-        }
-        match map_pending_tool_to_proto("file_glob", r#"{"patterns":["**/*.rs"]}"#) {
-            Some(Tool::FileGlobV2(glob)) => {
-                assert_eq!(glob.patterns, vec!["**/*.rs".to_owned()]);
-            }
-            other => panic!("expected glob, got {other:?}"),
-        }
-        match map_pending_tool_to_proto(
-            "apply_file_diffs",
-            r#"{"diffs":[{"file_path":"a.rs","search":"old","replace":"new"}]}"#,
-        ) {
-            Some(Tool::ApplyFileDiffs(diffs)) => {
-                assert_eq!(diffs.diffs.len(), 1);
-                assert_eq!(diffs.diffs[0].file_path, "a.rs");
-                assert_eq!(diffs.diffs[0].search, "old");
-                assert_eq!(diffs.diffs[0].replace, "new");
-            }
-            other => panic!("expected diffs, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn maps_pending_tool_to_read_files() {
-        let tool =
-            map_pending_tool_to_proto("read_files", r#"{"files":["src/main.rs","Cargo.toml"]}"#);
-        match tool {
-            Some(Tool::ReadFiles(rf)) => {
-                assert_eq!(rf.files.len(), 2);
-                assert_eq!(rf.files[0].name, "src/main.rs");
-                assert_eq!(rf.files[1].name, "Cargo.toml");
-            }
-            _ => panic!("expected Tool::ReadFiles"),
-        }
-    }
-
-    #[test]
-    fn builds_chat_messages_from_conversation_history() {
-        let tasks = vec![warp_multi_agent_api::Task {
-            id: "task-1".to_owned(),
-            messages: vec![
-                Message {
-                    id: "msg-1".to_owned(),
-                    message: Some(MessageKind::UserQuery(
-                        warp_multi_agent_api::message::UserQuery {
-                            query: "What is OwnTerm?".to_owned(),
-                            ..Default::default()
-                        },
-                    )),
-                    ..Default::default()
-                },
-                Message {
-                    id: "msg-2".to_owned(),
-                    message: Some(MessageKind::AgentOutput(AgentOutput {
-                        text: "OwnTerm is a local-first terminal.".to_owned(),
-                    })),
-                    ..Default::default()
-                },
-            ],
-            ..Default::default()
-        }];
-
-        let messages = build_chat_messages(&tasks, "Tell me more");
-        // May contain system prompt at index 0
-        let user_msgs: Vec<_> = messages.iter().filter(|m| m.role == "user").collect();
-        let assistant_msgs: Vec<_> = messages.iter().filter(|m| m.role == "assistant").collect();
-
-        assert_eq!(user_msgs.len(), 2);
-        assert_eq!(user_msgs[0].content.as_deref(), Some("What is OwnTerm?"));
-        assert_eq!(user_msgs[1].content.as_deref(), Some("Tell me more"));
-        assert_eq!(assistant_msgs.len(), 1);
-        assert_eq!(
-            assistant_msgs[0].content.as_deref(),
-            Some("OwnTerm is a local-first terminal.")
-        );
-    }
-
-    #[test]
-    #[allow(deprecated)]
-    fn builds_chat_messages_with_tool_call_and_result() {
-        let tasks = vec![warp_multi_agent_api::Task {
-            id: "task-1".to_owned(),
-            messages: vec![
-                Message {
-                    id: "msg-1".to_owned(),
-                    message: Some(MessageKind::UserQuery(
-                        warp_multi_agent_api::message::UserQuery {
-                            query: "Run cargo check".to_owned(),
-                            ..Default::default()
-                        },
-                    )),
-                    ..Default::default()
-                },
-                Message {
-                    id: "msg-2".to_owned(),
-                    message: Some(MessageKind::ToolCall(ToolCall {
-                        tool_call_id: "call_abc".to_owned(),
-                        tool: Some(Tool::RunShellCommand(RunShellCommand {
-                            command: "cargo check".to_owned(),
-                            ..Default::default()
-                        })),
-                    })),
-                    ..Default::default()
-                },
-                Message {
-                    id: "msg-3".to_owned(),
-                    message: Some(MessageKind::ToolCallResult(
-                        warp_multi_agent_api::message::ToolCallResult {
-                            tool_call_id: "call_abc".to_owned(),
-                            context: None,
-                            result: Some(ToolResult::RunShellCommand(
-                                warp_multi_agent_api::RunShellCommandResult {
-                                    command: "cargo check".to_owned(),
-                                    output: "Finished dev target(s)".to_owned(),
-                                    exit_code: 0,
-                                    result: None,
-                                },
-                            )),
-                        },
-                    )),
-                    ..Default::default()
-                },
-            ],
-            ..Default::default()
-        }];
-
-        let messages = build_chat_messages(&tasks, "What is next?");
-        let tool_call_msg = messages
-            .iter()
-            .find(|m| m.tool_calls.is_some())
-            .expect("should find tool call message");
-        assert_eq!(tool_call_msg.role, "assistant");
-        let calls = tool_call_msg.tool_calls.as_ref().unwrap();
-        assert_eq!(calls[0].id, "call_abc");
-        assert_eq!(calls[0].function.name, "run_shell_command");
-
-        let tool_result_msg = messages
-            .iter()
-            .find(|m| m.role == "tool")
-            .expect("should find tool result message");
-        assert_eq!(tool_result_msg.tool_call_id.as_deref(), Some("call_abc"));
-        assert_eq!(
-            tool_result_msg.content.as_deref(),
-            Some("Finished dev target(s)")
-        );
-    }
-
-    #[tokio::test]
-    async fn stream_cancellation_terminates_stream() {
-        let (tx, rx) = futures::channel::oneshot::channel();
-        let infinite_stream = async_stream::stream! {
-            yield 1;
-            yield 2;
-            yield 3;
-            yield 4;
-        };
-
-        let mut stream = Box::pin(infinite_stream.take_until(rx));
-        assert_eq!(stream.next().await, Some(1));
-        let _ = tx.send(());
-        assert_eq!(stream.next().await, None);
-    }
-}
+#[path = "ownterm_openai_tests.rs"]
+mod tests;

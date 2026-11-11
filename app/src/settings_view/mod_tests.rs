@@ -93,7 +93,7 @@ fn match_data_countable_zero_is_not_truthy() {
 
 #[test]
 fn subpage_display_names_are_correct() {
-    assert_eq!(SettingsSection::WarpAgent.to_string(), "Warp Agent");
+    assert_eq!(SettingsSection::WarpAgent.to_string(), "Agent");
     assert_eq!(SettingsSection::AgentProfiles.to_string(), "Profiles");
     assert_eq!(SettingsSection::AgentMCPServers.to_string(), "MCP servers");
     assert_eq!(SettingsSection::Knowledge.to_string(), "Knowledge");
@@ -153,8 +153,10 @@ const ALL_SECTIONS: &[SettingsSection] = &[
 /// Sections whose user-facing Display label has deliberately diverged from the
 /// slug it was seeded from, because the slug is a stored contract that the
 /// rename must not follow.
-const SECTIONS_WITH_RENAMED_DISPLAY_LABELS: &[SettingsSection] =
-    &[SettingsSection::WarpCloudAgentAPIKeys];
+const SECTIONS_WITH_RENAMED_DISPLAY_LABELS: &[SettingsSection] = &[
+    SettingsSection::WarpAgent,
+    SettingsSection::WarpCloudAgentAPIKeys,
+];
 
 #[test]
 fn all_sections_list_is_exhaustive() {

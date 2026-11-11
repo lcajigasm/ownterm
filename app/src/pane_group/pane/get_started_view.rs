@@ -213,7 +213,7 @@ impl GetStartedView {
             .with_children([
                 Container::new(
                     ConstrainedBox::new(
-                        Icon::new("bundled/svg/warp-logo-neutral.svg", theme.foreground()).finish(),
+                        Icon::new("bundled/svg/terminal.svg", theme.foreground()).finish(),
                     )
                     .with_height(40.)
                     .with_width(40.)
@@ -223,7 +223,7 @@ impl GetStartedView {
                 .finish(),
                 appearance
                     .ui_builder()
-                    .paragraph("Welcome to Warp")
+                    .paragraph("Welcome to OwnTerm")
                     .with_style(UiComponentStyles {
                         font_size: Some(20.),
                         ..Default::default()

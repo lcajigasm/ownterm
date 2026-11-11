@@ -214,7 +214,7 @@ fn settings_file_error_hint(error: &SettingsFileError) -> &'static str {
 const STATUS_UNAVAILABLE: &str = "\u{2014}"; // em dash
 const STATUS_UNTITLED_SESSION: &str = "Untitled";
 const STATUS_DEV_BUILD: &str = "dev build";
-const STATUS_NOT_SIGNED_IN: &str = "Not signed in";
+const STATUS_NOT_SIGNED_IN: &str = "No account";
 
 fn status_menu_is_open(mode: TuiInputSuggestionsMode) -> bool {
     matches!(
@@ -383,7 +383,7 @@ const VIM_MODE_DISABLED_HINT: &str = "Vim mode disabled.";
 const VIM_MODE_PERSISTENCE_FAILED_HINT: &str = "Could not save the vim mode setting.";
 const THEME_PERSISTENCE_FAILED_HINT: &str = "Could not save the theme setting.";
 const ZERO_STATE_ASCII_INITIAL_LOAD_FAILED_HINT: &str =
-    "Could not load custom ASCII art. Using the built-in Warp logo.";
+    "Could not load custom ASCII art. Using the built-in logo.";
 const ZERO_STATE_ASCII_RELOAD_FAILED_HINT: &str =
     "Could not reload custom ASCII art. Keeping the current object.";
 #[cfg(feature = "voice_input")]
@@ -3047,7 +3047,7 @@ impl TuiTerminalSessionView {
             Some(CloudConversationData::CLIAgent(_)) => {
                 self.fail_conversation_restore(
                     request_id,
-                    "Warp Agent CLI only supports Oz/Warp conversations.".to_owned(),
+                    "OwnTerm Agent CLI only supports Oz/Warp conversations.".to_owned(),
                     ctx,
                 );
                 return;
@@ -5542,7 +5542,7 @@ impl TuiTerminalSessionView {
                     let label = if conversation.is_summarizing() {
                         "Summarizing conversation"
                     } else {
-                        "Warping"
+                        "Working"
                     };
                     content = content.child(
                         TuiContainer::new(self.render_warping_indicator(label, elapsed, ctx))

@@ -103,3 +103,52 @@ jobs:
         run: |
           cargo check -p warp --bin ownterm
           cargo check -p warp_tui --bin ownterm-tui
+
+  agent-tests:
+    name: Local agent tests
+    runs-on: ubuntu-22.04
+    env:
+      # The client's test binary does not fit the runner's disk with debug info.
+      CARGO_PROFILE_DEV_DEBUG: "0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.92.0
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "25.x"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config \
+            g++ \
+            libasound2-dev \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            libxcb-xfixes0-dev \
+            libxkbcommon-dev \
+            libssl-dev \
+            libx11-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libxrandr-dev \
+            libgl1-mesa-dev
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: agent-tests-1.92
+
+      - name: Test the agent loop, feature policy, and TUI start
+        run: |
+          cargo test -p warp --lib --features tui -- \
+            ai::agent::api::ownterm_openai \
+            features::tests \
+            tui::tests

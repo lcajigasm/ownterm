@@ -286,8 +286,8 @@ pub fn init_actions_from_parent_view<T: Action + Clone>(
         vec![
             ToggleSettingActionPair::custom(
                 SettingActionPairDescriptions::new(
-                    "Show Warp Agent changelog in new agent conversation view",
-                    "Hide Warp Agent changelog in new agent conversation view",
+                    "Show agent changelog in new agent conversation view",
+                    "Hide agent changelog in new agent conversation view",
                 ),
                 builder(SettingsAction::WarpAgent(
                     WarpAgentPageAction::ToggleShowOzUpdatesInZeroState,
@@ -2440,16 +2440,16 @@ impl WarpAgentPageView {
         let global_ai_sign_up_button = MouseStateHandle::default();
         PageType::new_categorized(
             categories,
-            Some(PageTitle::new("Warp Agent").with_trailing_element(
-                move |_view, appearance, app| {
+            Some(
+                PageTitle::new("Agent").with_trailing_element(move |_view, appearance, app| {
                     render_global_ai_toggle(
                         &global_ai_switch_state,
                         &global_ai_sign_up_button,
                         appearance,
                         app,
                     )
-                },
-            )),
+                }),
+            ),
         )
     }
 
@@ -4187,7 +4187,7 @@ impl VoiceWidget {
 
         let voice_input_description_text_fragments = vec![
             FormattedTextFragment::plain_text(
-                "Voice input allows you to control Warp by speaking directly to your terminal (powered by ",
+                "Voice input allows you to control OwnTerm by speaking directly to your terminal (powered by ",
             ),
             FormattedTextFragment::hyperlink("Wispr Flow", WISPR_FLOW_URL),
             FormattedTextFragment::plain_text(")."),
@@ -4390,7 +4390,7 @@ impl SettingsWidget for ShowOzUpdatesInZeroStateWidget {
         let ai_settings = AISettings::as_ref(app);
         let is_toggleable = ai_settings.is_any_ai_enabled(app);
         render_ai_setting_toggle::<ShouldShowOzUpdatesInZeroState>(
-            "Show Warp Agent changelog in new conversation view",
+            "Show agent changelog in new conversation view",
             WarpAgentPageAction::ToggleShowOzUpdatesInZeroState,
             *ai_settings.should_show_oz_updates_in_zero_state,
             is_toggleable,
@@ -4727,7 +4727,7 @@ impl SettingsWidget for AgentAttributionWidget {
         Flex::column()
             .with_child(toggle_row)
             .with_child(render_ai_setting_description(
-                "Warp Agent can add attribution to commit messages and pull requests it creates",
+                "The agent can add attribution to commit messages and pull requests it creates",
                 !state.is_disabled,
                 app,
             ))
@@ -4825,7 +4825,7 @@ impl SettingsWidget for CloudAgentComputerUseWidget {
         Flex::column()
             .with_child(toggle_row)
             .with_child(render_ai_setting_description(
-                "Enable computer use in cloud agent conversations started from the Warp app.",
+                "Enable computer use in cloud agent conversations started from the OwnTerm app.",
                 !is_disabled,
                 app,
             ))
@@ -4976,7 +4976,7 @@ impl SettingsWidget for AutoHandoffOnSleepWidget {
         Flex::column()
             .with_child(auto_handoff_on_sleep_row)
             .with_child(render_ai_setting_description(
-                "When macOS is about to sleep, automatically moves the most recently focused running local Warp Agent conversation to Cloud Mode so it can keep working.",
+                "When macOS is about to sleep, automatically moves the most recently focused running local agent conversation to Cloud Mode so it can keep working.",
                 true,
                 app,
             ))
@@ -5524,7 +5524,7 @@ impl ApiKeysWidget {
 
         if show_provider_keys {
             add_paragraph(vec![FormattedTextFragment::plain_text(
-                "Use your own API keys from model providers for Warp Agent. API keys are used to make requests to your chosen model provider. Using auto models or models you do not have available API keys for will consume Warp credits.",
+                "Use your own API keys from model providers for the agent. API keys are used to make requests to your chosen model provider.",
             )]);
         }
 
@@ -5536,7 +5536,7 @@ impl ApiKeysWidget {
 
         if show_provider_keys || show_custom_endpoints {
             add_paragraph(vec![FormattedTextFragment::plain_text(
-                "API keys added here are stored only on this device, not on Warp's servers.",
+                "API keys added here are stored only on this device.",
             )]);
             add_paragraph(vec![FormattedTextFragment::hyperlink(
                 "Learn more",
@@ -5680,7 +5680,7 @@ impl ApiKeysWidget {
 
         let description = Container::new(
             Text::new(
-                "Connect your SuperGrok plan to use Grok models in the Warp Agent through your xAI account.",
+                "Connect your SuperGrok plan to use Grok models in the agent through your xAI account.",
                 appearance.ui_font_family(),
                 CONTENT_FONT_SIZE,
             )
@@ -5792,7 +5792,7 @@ impl ApiKeysWidget {
 
         let description = Container::new(
             Text::new(
-                "Connect your ChatGPT plan to use OpenAI models in the Warp Agent through your OpenAI account.",
+                "Connect your ChatGPT plan to use OpenAI models in the agent through your OpenAI account.",
                 appearance.ui_font_family(),
                 CONTENT_FONT_SIZE,
             )
@@ -6422,9 +6422,9 @@ impl AwsBedrockWidget {
             user_workspaces.is_aws_bedrock_credentials_enabled(&scope, app);
         let is_usage_enabled = is_section_enabled && are_credentials_enabled;
         let toggle_description = if is_admin_enforced {
-            "Warp loads and sends local AWS CLI credentials for Bedrock-supported models. This setting is managed by your organization.".to_string()
+            "OwnTerm loads and sends local AWS CLI credentials for Bedrock-supported models. This setting is managed by your organization.".to_string()
         } else {
-            "Warp loads and sends local AWS CLI credentials for Bedrock-supported models."
+            "OwnTerm loads and sends local AWS CLI credentials for Bedrock-supported models."
                 .to_string()
         };
 

@@ -127,6 +127,25 @@ if grep -n -E 'releases\.warp\.dev|rudderstack|sentry\.io|segment\.(com|io)|warp
   fail "the installer or the usage guide names a Warp or telemetry host"
 fi
 
+for flag in Autoupdate Changelog CrashReporting SshRemoteServer CustomModelRouters \
+  CreatingSharedSessions RemoteCodebaseIndexing; do
+  require app/src/features.rs "FeatureFlag::${flag},"
+done
+require app/src/settings/ai.rs "fn is_server_backed_ai_available"
+require app/src/tui/mod.rs "matches!(channel, Channel::Oss)"
+require app/src/ai/agent/api/ownterm_openai.rs "fn plan_turn"
+require app/src/ai/agent/api/ownterm_openai.rs "CreateTask"
+require .github/workflows/ci.yml "ai::agent::api::ownterm_openai"
+require script/linux/bundle "are not supported for OwnTerm yet"
+
+if grep -n -F 'format!("{name} {arguments_json}")' app/src/ai/agent/api/ownterm_openai.rs; then
+  fail "an unknown tool call must never be run as a shell command"
+fi
+
+if grep -n -E 'warp\.dev|warpdotdev' app/src/util/links.rs; then
+  fail "help and feedback links must not point at Warp-owned sites"
+fi
+
 bash script/test_install_ownterm.sh
 
 echo "privacy audit: ok"

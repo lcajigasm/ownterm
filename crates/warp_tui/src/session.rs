@@ -66,7 +66,7 @@ struct TuiArgs {
     #[arg(long, env = "WARP_API_KEY")]
     api_key: Option<String>,
 
-    /// Securely store a model-provider API key for Warp Agent CLI.
+    /// Securely store a model-provider API key for OwnTerm Agent CLI.
     #[arg(
         long,
         value_name = LLMProvider::API_KEY_PROVIDER_VALUE_NAME,
@@ -75,7 +75,7 @@ struct TuiArgs {
     )]
     set_provider_api_key: Option<LLMProvider>,
 
-    /// Remove a securely stored model-provider API key from Warp Agent CLI.
+    /// Remove a securely stored model-provider API key from OwnTerm Agent CLI.
     #[arg(
         long,
         value_name = LLMProvider::API_KEY_PROVIDER_VALUE_NAME,

@@ -31,3 +31,30 @@ fn ownterm_policy_enables_local_agent_features_from_an_empty_set() {
     assert!(flags.contains(&FeatureFlag::APIKeyManagement));
     assert!(flags.contains(&FeatureFlag::SoloUserByok));
 }
+
+#[test]
+fn ownterm_policy_removes_features_backed_by_warp_services() {
+    let service_backed = [
+        FeatureFlag::Autoupdate,
+        FeatureFlag::Changelog,
+        FeatureFlag::CrashReporting,
+        FeatureFlag::SshRemoteServer,
+        FeatureFlag::RemoteCodebaseIndexing,
+        FeatureFlag::CustomModelRouters,
+        FeatureFlag::CreatingSharedSessions,
+        FeatureFlag::ViewingSharedSessions,
+        FeatureFlag::AgentSharedSessions,
+        FeatureFlag::SharedBlockTitleGeneration,
+        FeatureFlag::PredictAMQueries,
+        FeatureFlag::GlobalAIAnalyticsCollection,
+    ];
+    let mut flags = HashSet::from(service_backed);
+    flags.insert(FeatureFlag::ImeMarkedText);
+
+    apply_ownterm_feature_policy(&mut flags);
+
+    for flag in service_backed {
+        assert!(!flags.contains(&flag), "{flag:?} should be disabled");
+    }
+    assert!(flags.contains(&FeatureFlag::ImeMarkedText));
+}

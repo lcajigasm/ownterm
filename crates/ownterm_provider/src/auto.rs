@@ -373,10 +373,15 @@ pub fn choose_model(prompt: &str) -> anyhow::Result<Option<ModelChoice>> {
     log::info!("{}", selection.reason);
     record_last_choice(&selection.reason);
     let ranked = &selection.ranked;
+    let configured_base_url = base_url.as_deref().map(|url| (provider.as_str(), url));
     let mut attempts = Vec::with_capacity(ranked.len());
     for (index, candidate) in ranked.iter().enumerate() {
         if index == 0 {
-            attempts.push(attempt_for(candidate, selection.reason.clone())?);
+            attempts.push(attempt_for(
+                candidate,
+                selection.reason.clone(),
+                configured_base_url,
+            )?);
             continue;
         }
         let previous = index
@@ -385,6 +390,7 @@ pub fn choose_model(prompt: &str) -> anyhow::Result<Option<ModelChoice>> {
         attempts.push(attempt_for(
             candidate,
             reason_line(class, candidate, previous.as_deref()),
+            configured_base_url,
         )?);
     }
     Ok(Some(ModelChoice::Routed(attempts)))
@@ -604,14 +610,23 @@ fn pinned_attempt(provider: &str, model: &str) -> anyhow::Result<Attempt> {
     attempt_for(
         &to_candidate(candidate),
         format!("Session pin: {provider}/{model}. Auto is not choosing."),
+        None,
     )
 }
 
-fn attempt_for(candidate: &Candidate, reason: String) -> anyhow::Result<Attempt> {
+/// Builds the attempt for `candidate`. `configured_base_url` is the user's `(provider, base URL)`;
+/// a candidate from that provider is reached there instead of at the preset's default address.
+fn attempt_for(
+    candidate: &Candidate,
+    reason: String,
+    configured_base_url: Option<(&str, &str)>,
+) -> anyhow::Result<Attempt> {
     let preset = find_preset(&candidate.provider)
         .with_context(|| format!("unknown provider {}", candidate.provider))?;
-    let base_url = preset
-        .default_base_url
+    let base_url = configured_base_url
+        .filter(|(provider, _)| *provider == candidate.provider)
+        .map(|(_, url)| url)
+        .or(preset.default_base_url)
         .context("auto catalog provider has no base URL")?;
     let api_key_env = catalog_models()
         .iter()

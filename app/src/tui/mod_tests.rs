@@ -1,7 +1,7 @@
 use std::cell::Cell;
 use std::rc::Rc;
 
-use warp_core::channel::ChannelState;
+use warp_core::channel::{Channel, ChannelState};
 use warp_core::telemetry::testing::MockTelemetryContextProvider;
 use warpui::{App, SingletonEntity};
 
@@ -36,7 +36,7 @@ fn credential_only_auth_stays_on_signed_out_welcome() {
 
     assert!(!has_validated_identity(&auth_state));
     assert!(matches!(
-        initial_login_phase(&auth_state),
+        initial_login_phase(&auth_state, Channel::Stable),
         TuiLoginPhase::SignedOutWelcome
     ));
 }
@@ -47,7 +47,7 @@ fn credentials_with_user_identity_start_logged_in() {
 
     assert!(has_validated_identity(&auth_state));
     assert!(matches!(
-        initial_login_phase(&auth_state),
+        initial_login_phase(&auth_state, Channel::Stable),
         TuiLoginPhase::LoggedIn
     ));
 }
@@ -58,7 +58,7 @@ fn missing_credentials_and_identity_start_signed_out() {
 
     assert!(!has_validated_identity(&auth_state));
     assert!(matches!(
-        initial_login_phase(&auth_state),
+        initial_login_phase(&auth_state, Channel::Stable),
         TuiLoginPhase::SignedOutWelcome
     ));
 }
@@ -449,4 +449,14 @@ fn emits_logged_out_event_and_resets_login_details() {
             ));
         });
     });
+}
+
+#[test]
+fn oss_channel_starts_in_the_terminal_without_an_account() {
+    let auth_state = AuthState::new_logged_out_for_test();
+
+    assert!(matches!(
+        initial_login_phase(&auth_state, Channel::Oss),
+        TuiLoginPhase::LoggedIn
+    ));
 }

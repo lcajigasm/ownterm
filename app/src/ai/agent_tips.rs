@@ -108,7 +108,7 @@ static DEFAULT_TIPS: LazyLock<Vec<AgentTip>> = LazyLock::new(|| {
             kind: AgentTipKind::SlashCommands,
         },
         AgentTip {
-            description: "<keybinding> to open the Command Palette and access Warp actions and shortcuts.".to_string(),
+            description: "<keybinding> to open the Command Palette and access OwnTerm actions and shortcuts.".to_string(),
             link: Some("https://docs.warp.dev/terminal/command-palette".to_string()),
             binding_name: Some(TOGGLE_COMMAND_PALETTE_KEYBINDING_NAME),
             action: Some(WorkspaceAction::OpenPalette {
@@ -266,7 +266,7 @@ static DEFAULT_TIPS: LazyLock<Vec<AgentTip>> = LazyLock::new(|| {
             kind: AgentTipKind::General,
         },
         AgentTip {
-            description: "Use the `oz` command to run the Warp Agent in headless mode, useful for remote machines.".to_string(),
+            description: "Use the `oz` command to run the agent in headless mode, useful for remote machines.".to_string(),
             link: Some("https://docs.warp.dev/reference/cli".to_string()),
             binding_name: None,
             action: None,
@@ -294,7 +294,7 @@ static DEFAULT_TIPS: LazyLock<Vec<AgentTip>> = LazyLock::new(|| {
             kind: AgentTipKind::Context,
         },
         AgentTip {
-            description: "Warpify a remote SSH session to enable the Warp Agent inside that environment.".to_string(),
+            description: "Warpify a remote SSH session to enable the agent inside that environment.".to_string(),
             link: Some("https://docs.warp.dev/terminal/warpify".to_string()),
             binding_name: None,
             action: None,

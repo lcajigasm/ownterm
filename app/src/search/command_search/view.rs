@@ -8,6 +8,7 @@ use itertools::Itertools;
 use lazy_static::lazy_static;
 use pathfinder_color::ColorU;
 use pathfinder_geometry::vector::Vector2F;
+use warp_core::channel::{Channel, ChannelState};
 use warp_core::features::FeatureFlag;
 use warp_errors::report_error;
 use warpui::accessibility::{AccessibilityContent, WarpA11yRole};
@@ -229,7 +230,10 @@ impl CommandSearchView {
             // Add data sources in lowest->highest priority order.  If results from two
             // data sources produce the same ranking score, the data source added first
             // will show up higher in the list (i.e.: further away from the input).
-            if AISettings::as_ref(ctx).is_any_ai_enabled(ctx) {
+            // AI command search is answered by a Warp server endpoint, which OwnTerm lacks.
+            if AISettings::as_ref(ctx).is_any_ai_enabled(ctx)
+                && ChannelState::channel() != Channel::Oss
+            {
                 mixer.add_sync_source(
                     WarpAIDataSource::new(self.ai_client.clone(), None),
                     HashSet::from([QueryFilter::NaturalLanguage]),
@@ -574,7 +578,7 @@ impl CommandSearchView {
         is_ratelimit_error: bool,
         appearance: &Appearance,
     ) -> Box<dyn Element> {
-        if is_ratelimit_error {
+        if is_ratelimit_error && ChannelState::channel() != Channel::Oss {
             let current_user_id = self.auth_state.user_id().unwrap_or_default();
             if let Some(team) = UserWorkspaces::as_ref(app).team_for_view_handle(&self.handle, app)
             {

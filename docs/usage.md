@@ -57,7 +57,7 @@ model=llama3.3
 ownterm-tui configure-provider --provider ollama --model llama3.3
 ```
 
-Settings does the same write. Open Settings, stay on Warp Agent, and use **Local provider**. The provider and model lists are the ones `ownterm-tui models` prints. Base URL can stay on the preset default. The API key field is only the environment variable name (`OWNTERM_API_KEY` unless you set another). A different name is stored as `api_key_env`. The key itself is never written. Validation errors stay on that form.
+Settings does the same write. Open Settings, stay on Agent, and use **Local provider**. The provider and model lists are the ones `ownterm-tui models` prints. Base URL can stay on the preset default. The API key field is only the environment variable name (`OWNTERM_API_KEY` unless you set another). A different name is stored as `api_key_env`. The key itself is never written. Validation errors stay on that form.
 
 `ownterm-tui models --provider ollama` prints suggested model ids and the catalog URL for that endpoint (`/models`). It does not download the catalog. Pass `--base-url` when the preset needs one, or to point at your own server.
 
@@ -77,7 +77,7 @@ HTTP is accepted only for localhost and loopback. Other endpoints must be HTTPS.
 
 ## Agent tools
 
-With a model configured, the assistant can run a shell command, read files, grep, glob, and apply a search-and-replace diff. Those calls stay on this machine. Grep is not Warp's cloud code index. A diff still waits for the confirmation the terminal already shows.
+With a model configured, the assistant can run a shell command, read files, grep, glob, and apply a search-and-replace diff. Each result goes back to the model, which continues until it has an answer. Those calls stay on this machine. Grep is not Warp's cloud code index. A diff still waits for the confirmation the terminal already shows.
 
 ## Local workflows
 

@@ -649,7 +649,7 @@ fn render_standard_top_section(
 
     let mut column = TuiFlex::column()
         .child(
-            TuiText::new("Warp Agent CLI")
+            TuiText::new("OwnTerm Agent CLI")
                 .with_style(title_style)
                 .truncate()
                 .finish(),
@@ -888,7 +888,7 @@ fn mcp_status_label(snapshot: &warp::tui_export::TuiMcpSnapshot) -> (String, boo
 }
 
 /// The login-info line: the signed-in account (email, falling back to the
-/// display name) when authenticated, or a graceful "Not signed in" state when
+/// display name) when authenticated, or a neutral "Local session" state when
 /// not. The zero state is normally only shown after login, but the unauthenticated
 /// branch keeps the surface honest if it is ever rendered before auth completes.
 fn render_login_line(builder: &TuiUiBuilder, app: &AppContext) -> Box<dyn TuiElement> {
@@ -906,7 +906,7 @@ fn render_login_line_with_prefix(
     let (label, style) = if let Some(label) = login_line_label(signed_in_prefix, user_info) {
         (label, muted)
     } else {
-        ("Not signed in".to_owned(), dim)
+        ("Local session".to_owned(), dim)
     };
     TuiText::new(label).with_style(style).truncate().finish()
 }

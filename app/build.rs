@@ -471,7 +471,8 @@ fn embed_resource_file(target_dir: &Path) {
     use std::io::Write;
 
     let version = env::var("GIT_RELEASE_TAG").unwrap_or("v0".to_owned());
-    let app_name = env::var("WARP_APP_NAME").unwrap_or("Warp".to_owned());
+    let product_name = "OwnTerm";
+    let app_name = env::var("WARP_APP_NAME").unwrap_or(product_name.to_owned());
     let bin_name = env::var("CARGO_BIN_NAME").unwrap_or_else(|_| "local".to_owned());
     // The package build script often has no bin name, and then the local
     // channel icon (the upstream mark) would be embedded in ownterm.exe.
@@ -521,7 +522,7 @@ BEGIN
             VALUE "LegalCopyright",   "© 2025, Denver Technologies, Inc\0"
             VALUE "InternalName",     "\0"
             VALUE "OriginalFilename", "\0"
-            VALUE "ProductName",      "Warp\0"
+            VALUE "ProductName",      "{product_name}\0"
             VALUE "ProductVersion",   "{version}\0"
         END
     END

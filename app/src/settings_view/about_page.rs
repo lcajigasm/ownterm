@@ -16,6 +16,8 @@ use crate::channel::ChannelState;
 use crate::themes::theme::ColorScheme;
 use crate::workspace::WorkspaceAction;
 
+const OWNTERM_REPO_URL: &str = "https://github.com/lcajigasm/ownterm";
+
 pub struct AboutPageView {
     page: PageType<Self>,
 }
@@ -48,6 +50,7 @@ impl View for AboutPageView {
 #[derive(Default)]
 struct AboutPageWidget {
     copy_version_button_mouse_state: MouseStateHandle,
+    repo_link_mouse_state: MouseStateHandle,
 }
 
 impl SettingsWidget for AboutPageWidget {
@@ -71,7 +74,8 @@ impl SettingsWidget for AboutPageWidget {
         let ui_builder = appearance.ui_builder();
         let is_oss = ChannelState::channel() == warp_core::channel::Channel::Oss;
 
-        let version = ChannelState::app_version().unwrap_or("v#.##.###");
+        let version =
+            ChannelState::app_version().unwrap_or(concat!("v", env!("CARGO_PKG_VERSION")));
 
         let version_text = ui_builder
             .span(version.to_string())
@@ -113,13 +117,22 @@ impl SettingsWidget for AboutPageWidget {
                 .finish();
 
             let repo_link = ui_builder
-                .span("https://github.com/lcajigasm/ownterm")
+                .link(
+                    OWNTERM_REPO_URL.to_owned(),
+                    Some(OWNTERM_REPO_URL.to_owned()),
+                    None,
+                    self.repo_link_mouse_state.clone(),
+                )
+                .soft_wrap(false)
                 .build()
                 .with_margin_top(12.)
                 .finish();
 
             let attribution = ui_builder
-                .span("Derived from Warp (© 2026 Warp, AGPL-3.0 / MIT)")
+                .span(
+                    "OwnTerm is derived from the Warp client, © Denver Technologies, Inc. \
+                     (Warp), licensed AGPL-3.0 / MIT.",
+                )
                 .build()
                 .with_margin_top(16.)
                 .finish();
