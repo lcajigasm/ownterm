@@ -4,6 +4,16 @@ on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
+    # A cache saved by a tag run is invisible to the next tag. Only caches saved on the default
+    # branch are shared, so a dependency change on master rebuilds them ahead of the release.
+    branches:
+      - master
+    paths:
+      - Cargo.lock
+      - .github/workflows/release.yml
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
   workflow_dispatch:
     inputs:
       tag:
@@ -15,30 +25,49 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: false
+  group: release-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' && github.event_name != 'workflow_dispatch' }}
+
+env:
+  # OwnTerm uploads no crash reports, so nothing symbolicates a release binary. Line tables only
+  # cost compile time, a dsymutil pass on macOS, and download size.
+  CARGO_PROFILE_RELEASE_DEBUG: "0"
 
 jobs:
   build:
-    name: Build (${{ matrix.artifact_name }})
+    name: Build (${{ matrix.artifact_name }}, ${{ matrix.bin }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        target:
+          - aarch64-apple-darwin
+          - x86_64-apple-darwin
+          - x86_64-unknown-linux-gnu
+          - x86_64-pc-windows-msvc
+        # The TUI enables other features of the `warp` crate, so building it after the GUI in
+        # one job recompiles that crate from scratch. Separate jobs do the two builds at once.
+        bin:
+          - ownterm
+          - ownterm-tui
         include:
           # macos-14 is in a retirement brownout through 2026-11-02 and rejects jobs.
-          - os: macos-15
-            target: aarch64-apple-darwin
+          - target: aarch64-apple-darwin
+            os: macos-15
             artifact_name: ownterm-macos-arm64
-          - os: macos-15
-            target: x86_64-apple-darwin
+          - target: x86_64-apple-darwin
+            os: macos-15
             artifact_name: ownterm-macos-x86_64
-          - os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
             artifact_name: ownterm-linux-x86_64
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
             artifact_name: ownterm-windows-x86_64
+          - bin: ownterm
+            build_args: -p warp --bin ownterm
+          - bin: ownterm-tui
+            build_args: -p warp_tui --bin ownterm-tui
 
     steps:
       - name: Checkout
@@ -84,35 +113,61 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.target }}
+          shared-key: release-${{ matrix.target }}-${{ matrix.bin }}
+          save-if: ${{ github.ref == 'refs/heads/master' }}
 
-      - name: Build OwnTerm GUI and TUI
+      - name: Build ${{ matrix.bin }}
         shell: bash
         env:
           # build.rs embeds this icon when the package script has no bin name.
           OWNTERM_WINDOWS_ICON: channels/oss/icon/no-padding/icon.ico
-        run: |
-          cargo build --release --locked --target ${{ matrix.target }} -p warp --bin ownterm
-          cargo build --release --locked --target ${{ matrix.target }} -p warp_tui --bin ownterm-tui
+        run: cargo build --release --locked --target ${{ matrix.target }} ${{ matrix.build_args }}
 
-      - name: Package Unix
-        if: runner.os != 'Windows'
+      - name: Upload binary
+        if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bin-${{ matrix.artifact_name }}-${{ matrix.bin }}
+          path: |
+            target/${{ matrix.target }}/release/${{ matrix.bin }}
+            target/${{ matrix.target }}/release/${{ matrix.bin }}.exe
+          if-no-files-found: error
+          retention-days: 1
+
+  package:
+    name: Package (${{ matrix.artifact_name }})
+    needs: build
+    if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        artifact_name:
+          - ownterm-macos-arm64
+          - ownterm-macos-x86_64
+          - ownterm-linux-x86_64
+          - ownterm-windows-x86_64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.sha }}
+
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: bin-${{ matrix.artifact_name }}-*
+          path: bins
+          merge-multiple: true
+
+      - name: Package archive
         shell: bash
         run: |
           mkdir -p staging
-          cp "target/${{ matrix.target }}/release/ownterm" staging/ownterm
-          cp "target/${{ matrix.target }}/release/ownterm-tui" staging/ownterm-tui
-          cp README.md LICENSE-AGPL LICENSE-MIT staging/
-          tar -C staging -czf "${{ matrix.artifact_name }}.tar.gz" .
-          shasum -a 256 "${{ matrix.artifact_name }}.tar.gz" > "${{ matrix.artifact_name }}.tar.gz.sha256"
-
-      - name: Package Windows
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          mkdir -p staging
-          cp "target/${{ matrix.target }}/release/ownterm.exe" staging/ownterm.exe
-          cp "target/${{ matrix.target }}/release/ownterm-tui.exe" staging/ownterm-tui.exe
+          cp bins/ownterm* staging/
+          test -s staging/ownterm || test -s staging/ownterm.exe
+          test -s staging/ownterm-tui || test -s staging/ownterm-tui.exe
+          # Artifacts do not keep the executable bit.
+          chmod 755 staging/ownterm*
           cp README.md LICENSE-AGPL LICENSE-MIT staging/
           tar -C staging -czf "${{ matrix.artifact_name }}.tar.gz" .
           sha256sum "${{ matrix.artifact_name }}.tar.gz" > "${{ matrix.artifact_name }}.tar.gz.sha256"
@@ -127,7 +182,7 @@ jobs:
 
   macos-dmg:
     name: Package macOS DMG
-    needs: build
+    needs: package
     runs-on: macos-15
     steps:
       - name: Checkout
@@ -189,7 +244,7 @@ jobs:
 
   screenshots:
     name: Capture screenshots
-    needs: build
+    needs: package
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
@@ -225,7 +280,7 @@ jobs:
 
   publish:
     name: Publish GitHub Release
-    needs: [build, macos-dmg]
+    needs: [package, macos-dmg]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -234,6 +289,7 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
+          pattern: ownterm-*
           path: release-artifacts
 
       - name: Resolve tag
