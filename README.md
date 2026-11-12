@@ -38,7 +38,7 @@ OwnTerm is not affiliated with Warp Services, Inc. "Warp" remains their trademar
 
 ## Screenshots
 
-These frames are `ownterm-tui` running under Xvfb, taken by [`script/capture-ownterm.sh`](script/capture-ownterm.sh). The release workflow runs that script on a tag and on `workflow_dispatch`. They are not drawings of the window.
+These frames are `ownterm-tui` running under Xvfb, taken by [`script/capture-ownterm.sh`](script/capture-ownterm.sh). They are not drawings of the window.
 
 ![ownterm-tui models for Ollama](docs/screenshots/ownterm-tui-models.png)
 
@@ -49,6 +49,8 @@ These frames are `ownterm-tui` running under Xvfb, taken by [`script/capture-own
 The macOS disk image opens the desktop app, `OwnTerm.app`, with the same terminal model.
 
 ## Install
+
+OwnTerm is released for macOS only, on Apple Silicon and Intel. The Linux and Windows code inherited from Warp is still in the tree, but it is not built, tested, or published.
 
 ### Homebrew
 
@@ -71,8 +73,6 @@ If a release cannot combine the two Mac builds, it publishes `ownterm-macos-arm6
 | macOS, both architectures | [ownterm-macos-universal.dmg](https://github.com/lcajigasm/ownterm/releases/latest/download/ownterm-macos-universal.dmg) |
 | macOS Apple Silicon | [ownterm-macos-arm64.tar.gz](https://github.com/lcajigasm/ownterm/releases/latest/download/ownterm-macos-arm64.tar.gz) |
 | macOS Intel | [ownterm-macos-x86_64.tar.gz](https://github.com/lcajigasm/ownterm/releases/latest/download/ownterm-macos-x86_64.tar.gz) |
-| Linux x86_64 | [ownterm-linux-x86_64.tar.gz](https://github.com/lcajigasm/ownterm/releases/latest/download/ownterm-linux-x86_64.tar.gz) |
-| Windows x86_64 | [ownterm-windows-x86_64.tar.gz](https://github.com/lcajigasm/ownterm/releases/latest/download/ownterm-windows-x86_64.tar.gz) |
 
 Check `SHA256SUMS` on the release before you open an unsigned archive. From a checkout, `bash script/install-ownterm.sh` downloads the archive for this machine, checks the sum, and copies `ownterm` and `ownterm-tui` to `~/.local/bin`.
 
@@ -138,11 +138,11 @@ The request also carries the session's working directory, operating system, shel
 
 Desktop app, from the fixed bindings in the client:
 
-| Action | macOS | Linux and Windows |
-| :--- | :--- | :--- |
-| Agent input mode | ⌘I | Ctrl+I |
-| Send the prompt to the local agent | ⌘Enter | Ctrl+Shift+Enter |
-| Leave agent input | Esc | Esc |
+| Action | Key |
+| :--- | :--- |
+| Agent input mode | ⌘I |
+| Send the prompt to the local agent | ⌘Enter |
+| Leave agent input | Esc |
 
 `ownterm-tui` prints its own list with `?`:
 
@@ -170,7 +170,7 @@ cd ownterm
 ./script/run-tui      # headless TUI
 ```
 
-Rust 1.92 and protobuf are required. On Linux the GUI also needs the usual X11, fontconfig, and OpenGL packages listed in [AGENTS.md](AGENTS.md).
+Rust 1.92 and protobuf are required. `./script/bootstrap` installs them on a Mac.
 
 ## License and credits
 

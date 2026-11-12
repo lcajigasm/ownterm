@@ -1,0 +1,11 @@
+# Paths that script/sync-upstream.sh never takes from warpdotdev/warp. One path per line.
+# A directory covers everything under it, including files upstream adds later.
+
+# Warp's CI, release and repository automation. OwnTerm has its own, and the workflow token
+# cannot push a change to a workflow file.
+.github/
+
+# OwnTerm's own front page and documentation.
+README.md
+CONTRIBUTING.md
+docs/

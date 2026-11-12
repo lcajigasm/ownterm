@@ -53,4 +53,4 @@ The API key is read from an environment variable and is never written to disk. T
 
 ## Packaging
 
-`.github/workflows/release.yml` builds `ownterm` and `ownterm-tui` for four targets on a version tag and publishes archives, a macOS disk image, and `SHA256SUMS`. Nothing is code-signed. `script/bump-version.sh` keeps `app/Cargo.toml`, `Cargo.lock`, and the bundle metadata on the same version.
+`.github/workflows/release.yml` builds `ownterm` and `ownterm-tui` for macOS (arm64 and x86_64) on a version tag and publishes the archives, the universal disk image, and `SHA256SUMS`. The Homebrew tap follows that release. Linux and Windows are not built. Nothing is code-signed. `script/bump-version.sh` keeps `app/Cargo.toml`, `Cargo.lock`, and the bundle metadata on the same version.

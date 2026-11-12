@@ -20,26 +20,8 @@ ownterm_asset_name() {
           ;;
       esac
       ;;
-    Linux)
-      case "$arch" in
-        x86_64 | amd64) printf '%s\n' ownterm-linux-x86_64.tar.gz ;;
-        *)
-          echo "unsupported architecture: $arch" >&2
-          return 1
-          ;;
-      esac
-      ;;
-    MINGW* | MSYS* | CYGWIN*)
-      case "$arch" in
-        x86_64 | amd64) printf '%s\n' ownterm-windows-x86_64.tar.gz ;;
-        *)
-          echo "unsupported architecture: $arch" >&2
-          return 1
-          ;;
-      esac
-      ;;
     *)
-      echo "unsupported OS: $os" >&2
+      echo "unsupported OS: $os (OwnTerm releases are macOS only)" >&2
       return 1
       ;;
   esac
@@ -54,7 +36,7 @@ ownterm_release_url() {
     return 1
   fi
   case "$asset" in
-    SHA256SUMS | ownterm-macos-arm64.tar.gz | ownterm-macos-x86_64.tar.gz | ownterm-linux-x86_64.tar.gz | ownterm-windows-x86_64.tar.gz) ;;
+    SHA256SUMS | ownterm-macos-arm64.tar.gz | ownterm-macos-x86_64.tar.gz) ;;
     *)
       echo "refusing release asset: $asset" >&2
       return 1
@@ -160,7 +142,7 @@ ownterm_install_archive() {
   done < <(tar -tzf "$archive")
   tar -xzf "$archive" -C "$tmp"
   mkdir -p "$bindir"
-  for name in ownterm ownterm-tui ownterm.exe ownterm-tui.exe; do
+  for name in ownterm ownterm-tui; do
     if [[ -f "$tmp/$name" ]]; then
       install -m 755 "$tmp/$name" "$bindir/$name"
       found=1

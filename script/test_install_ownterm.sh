@@ -28,19 +28,25 @@ assert_eq \
   "ownterm-macos-arm64.tar.gz" \
   "macos arm64 asset"
 assert_eq \
-  "$(ownterm_asset_name Linux x86_64)" \
-  "ownterm-linux-x86_64.tar.gz" \
-  "linux asset"
+  "$(ownterm_asset_name Darwin x86_64)" \
+  "ownterm-macos-x86_64.tar.gz" \
+  "macos x86_64 asset"
+if ownterm_asset_name Linux x86_64 >/dev/null 2>&1; then
+  fail "a Linux asset was offered"
+fi
+if ownterm_release_url lcajigasm/ownterm latest ownterm-linux-x86_64.tar.gz >/dev/null 2>&1; then
+  fail "a Linux asset URL was accepted"
+fi
 assert_eq \
-  "$(ownterm_release_url lcajigasm/ownterm v0.2.0 ownterm-linux-x86_64.tar.gz)" \
-  "https://github.com/lcajigasm/ownterm/releases/download/v0.2.0/ownterm-linux-x86_64.tar.gz" \
+  "$(ownterm_release_url lcajigasm/ownterm v0.2.0 ownterm-macos-x86_64.tar.gz)" \
+  "https://github.com/lcajigasm/ownterm/releases/download/v0.2.0/ownterm-macos-x86_64.tar.gz" \
   "tagged release url"
 assert_eq \
   "$(ownterm_release_url lcajigasm/ownterm latest SHA256SUMS)" \
   "https://github.com/lcajigasm/ownterm/releases/latest/download/SHA256SUMS" \
   "latest sums url"
 
-if ownterm_release_url lcajigasm/ownterm v0.2 ownterm-linux-x86_64.tar.gz >/dev/null 2>&1; then
+if ownterm_release_url lcajigasm/ownterm v0.2 ownterm-macos-arm64.tar.gz >/dev/null 2>&1; then
   fail "a non-semver tag was accepted"
 fi
 if ownterm_release_url 'https://releases.example/ownterm' latest SHA256SUMS >/dev/null 2>&1; then
@@ -52,7 +58,7 @@ fi
 ownterm_assert_download_host "https://github.com/lcajigasm/ownterm/releases/latest/download/SHA256SUMS"
 ownterm_assert_download_host "https://release-assets.githubusercontent.com/example"
 
-asset="$(ownterm_asset_name "$(uname -s)" "$(uname -m)")"
+asset="ownterm-macos-arm64.tar.gz"
 stage="$tmp/stage"
 mkdir -p "$stage"
 printf '#!/bin/sh\necho ownterm\n' >"$stage/ownterm"
@@ -66,7 +72,23 @@ printf '%s  %s\n' "$hash" "$asset" >"$release/SHA256SUMS"
 
 prefix="$tmp/prefix"
 provider_file="$tmp/provider.env"
-bash "$root/script/install-ownterm.sh" \
+# The test runs on Linux in CI. The installer only serves macOS, so it is told it is on one.
+fake_bin="$tmp/fake-bin"
+mkdir -p "$fake_bin"
+cat >"$fake_bin/uname" <<'SH'
+#!/bin/sh
+case "$1" in
+  -s) echo Darwin ;;
+  -m) echo arm64 ;;
+esac
+SH
+chmod 755 "$fake_bin/uname"
+
+install_from_dir() {
+  PATH="$fake_bin:$PATH" bash "$root/script/install-ownterm.sh" "$@"
+}
+
+install_from_dir \
   --from-dir "$release" \
   --prefix "$prefix" \
   --provider ollama \
@@ -83,7 +105,7 @@ bad="$tmp/bad-release"
 mkdir -p "$bad"
 cp "$release/$asset" "$bad/$asset"
 printf '0000000000000000000000000000000000000000000000000000000000000000  %s\n' "$asset" >"$bad/SHA256SUMS"
-if bash "$root/script/install-ownterm.sh" --from-dir "$bad" --prefix "$tmp/not-installed"; then
+if install_from_dir --from-dir "$bad" --prefix "$tmp/not-installed"; then
   fail "a bad checksum was installed"
 fi
 [[ ! -e "$tmp/not-installed/bin/ownterm" ]] || fail "a bad checksum left a binary behind"
