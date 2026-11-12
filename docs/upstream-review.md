@@ -2,6 +2,14 @@
 
 OwnTerm forked the Warp client at `1e6c3ae465d6a925a9b97ae03877aaadd159b8f1` (2026-10-22, “Project ACP MCP tool calls with their tool name, server identity, and late input”, warpdotdev/warp#16615). This note lists commits on the upstream default branch after that point, through 2026-10-30, and whether OwnTerm should take them.
 
+## Automatic sync
+
+`.github/workflows/upstream-sync.yml` runs every Monday and on demand. It runs `script/sync-upstream.sh`, which merges the upstream default branch into a branch named `upstream-sync` and opens a pull request. Paths in `.github/upstream-sync-keep-ours` stay as OwnTerm has them, and a file OwnTerm deleted stays deleted. The privacy audit result is in the pull request, and OwnTerm CI runs on the branch. When a file conflicts, the run fails and its summary lists the files and the commands to finish the merge from a checkout.
+
+Merge that pull request with a merge commit. A squash drops the link to upstream, and the next run would bring the same commits again.
+
+The tables below are the manual passes made before this workflow existed.
+
 Telemetry, accounts, hosted keys, and paid or cloud-only behavior stay out. Two small fixes are in this tree. The rest are not.
 
 Checked again on 2026-11-01. The upstream default branch still ends at `d57d9760dba0590416eca4c94379ce7653f347b5` (#16696, 2026-10-30). No newer commit, so this pass brings nothing further.

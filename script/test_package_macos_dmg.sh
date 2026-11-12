@@ -43,16 +43,11 @@ fi
 
 release_yml="$root/.github/workflows/release.yml"
 for needle in \
-  "ownterm-macos-arm64" \
-  "ownterm-macos-x86_64" \
-  "ownterm-linux-x86_64" \
-  "ownterm-windows-x86_64" \
+  'ownterm-macos-$arch.tar.gz' \
   "script/package-macos-dmg.sh" \
   "ownterm-macos-universal.dmg" \
   "-p warp --bin ownterm" \
   "-p warp_tui --bin ownterm-tui" \
-  "OWNTERM_WINDOWS_ICON" \
-  "script/capture-ownterm.sh" \
   "SHA256SUMS"; do
   if ! grep -F -q -- "$needle" "$release_yml"; then
     fail "release.yml is missing $needle"

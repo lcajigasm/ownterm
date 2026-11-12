@@ -1,0 +1,131 @@
+name: Upstream Sync
+
+on:
+  schedule:
+    - cron: "41 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  # Starts OwnTerm CI on the sync branch: a pull request opened with the workflow token does
+  # not trigger other workflows.
+  actions: write
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+env:
+  SYNC_BRANCH: upstream-sync
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  sync:
+    name: Merge warpdotdev/warp
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: master
+          # A merge needs the common history with upstream.
+          fetch-depth: 0
+
+      - name: Merge upstream
+        id: merge
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          base="$(git rev-parse HEAD)"
+          git switch -c "$SYNC_BRANCH"
+          set +e
+          bash script/sync-upstream.sh
+          code=$?
+          set -e
+          theirs="$(git rev-parse FETCH_HEAD)"
+          {
+            echo "### Upstream commits"
+            echo
+            git log --no-merges --format='- %h %s' "$base..$theirs" | head -n 200
+          } > commits.md
+          if [[ "$code" == 3 ]]; then
+            git diff --name-only --diff-filter=U > conflicts.txt
+            git merge --abort
+            echo "result=conflicts" >> "$GITHUB_OUTPUT"
+          elif [[ "$code" != 0 ]]; then
+            exit "$code"
+          elif [[ "$(git rev-parse HEAD)" == "$base" ]]; then
+            echo "result=current" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=merged" >> "$GITHUB_OUTPUT"
+          fi
+          echo "theirs=${theirs:0:12}" >> "$GITHUB_OUTPUT"
+
+      - name: Privacy audit of the merge
+        id: audit
+        if: steps.merge.outputs.result == 'merged'
+        run: |
+          if bash scripts/audit-ownterm-privacy.sh > audit.log 2>&1; then
+            echo "status=passed" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=FAILED" >> "$GITHUB_OUTPUT"
+          fi
+          tail -n 20 audit.log
+
+      - name: Open or refresh the pull request
+        if: steps.merge.outputs.result == 'merged'
+        run: |
+          git push --force origin "$SYNC_BRANCH"
+          {
+            echo "Merges warpdotdev/warp up to \`${{ steps.merge.outputs.theirs }}\`. Paths in \`.github/upstream-sync-keep-ours\` were left as OwnTerm has them."
+            echo
+            echo "Privacy audit: **${{ steps.audit.outputs.status }}**."
+            echo
+            echo "> Merge this with **Create a merge commit**. A squash or rebase drops the link to upstream, and the next sync would bring every one of these commits again."
+            echo
+            cat commits.md
+            if [[ "${{ steps.audit.outputs.status }}" != "passed" ]]; then
+              printf '\n### Privacy audit output\n\n```\n'
+              tail -n 40 audit.log
+              printf '```\n'
+            fi
+          } > body.md
+          if [[ -n "$(gh pr list --head "$SYNC_BRANCH" --state open --json number --jq '.[].number')" ]]; then
+            gh pr edit "$SYNC_BRANCH" --body-file body.md
+          else
+            gh pr create --base master --head "$SYNC_BRANCH" \
+              --title "Merge upstream Warp (${{ steps.merge.outputs.theirs }})" \
+              --body-file body.md
+          fi
+          gh workflow run ci.yml --ref "$SYNC_BRANCH"
+
+      - name: Report conflicts
+        if: steps.merge.outputs.result == 'conflicts'
+        # Issues are disabled on this fork, so the report is the run summary and a failed run,
+        # which GitHub emails to the repository owner.
+        run: |
+          {
+            echo "## Upstream sync needs a manual merge"
+            echo
+            echo "The merge of warpdotdev/warp (up to \`${{ steps.merge.outputs.theirs }}\`) stopped on these files:"
+            echo
+            sed 's/^/- `/; s/$/`/' conflicts.txt
+            echo
+            echo "Resolve them from a checkout:"
+            echo
+            echo '```bash'
+            echo "git fetch origin && git switch -c $SYNC_BRANCH origin/master"
+            echo "bash script/sync-upstream.sh"
+            echo "# fix the files listed above, then:"
+            echo "git add -A && git commit --no-edit"
+            echo "git push -u origin $SYNC_BRANCH"
+            echo '```'
+            echo
+            echo "Open the pull request and merge it with **Create a merge commit**, so the next sync starts after these commits."
+            echo
+            cat commits.md
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::Upstream no longer merges cleanly: $(tr '\n' ' ' < conflicts.txt)"
+          exit 1

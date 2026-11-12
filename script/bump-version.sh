@@ -83,19 +83,7 @@ with open('app/src/bin/oss.rs', 'w') as f:
 "
 fi
 
-# 3. Update script/windows/windows-installer.iss
-if [ -f "script/windows/windows-installer.iss" ]; then
-  echo "Updating script/windows/windows-installer.iss..."
-  sed -i '' -E "s/#define MyAppVersion \"[^\"]+\"/#define MyAppVersion \"${VERSION}\"/" script/windows/windows-installer.iss
-fi
-
-# 4. Update script/windows/tui-installer.iss
-if [ -f "script/windows/tui-installer.iss" ]; then
-  echo "Updating script/windows/tui-installer.iss..."
-  sed -i '' -E "s/#define MyAppVersion \"[^\"]+\"/#define MyAppVersion \"${VERSION}\"/" script/windows/tui-installer.iss
-fi
-
-# 5. Update README.md download links and version labels
+# 3. Update README.md download links and version labels
 if [ -f "README.md" ]; then
   echo "Updating README.md download links..."
   python3 -c "
@@ -115,7 +103,7 @@ with open('README.md', 'w') as f:
 "
 fi
 
-# 6. Update docs/index.html download links, badges, and tag links
+# 4. Update docs/index.html download links, badges, and tag links
 if [ -f "docs/index.html" ]; then
   echo "Updating docs/index.html..."
   python3 -c "
@@ -134,11 +122,11 @@ with open('docs/index.html', 'w') as f:
 fi
 
 echo "==> Version bump complete!"
-git status --short app/Cargo.toml Cargo.lock app/src/bin/oss.rs script/windows/ README.md docs/index.html
+git status --short app/Cargo.toml Cargo.lock app/src/bin/oss.rs README.md docs/index.html
 
 if [ "$TAG_FLAG" = true ]; then
   echo "==> Creating commit and git tag v${VERSION}..."
-  git add app/Cargo.toml Cargo.lock app/src/bin/oss.rs script/windows/windows-installer.iss script/windows/tui-installer.iss README.md docs/index.html
+  git add app/Cargo.toml Cargo.lock app/src/bin/oss.rs README.md docs/index.html
   git commit -m "chore: bump version to v${VERSION}"
   git tag "v${VERSION}"
   echo "==> Created git tag: v${VERSION}"
@@ -158,5 +146,5 @@ else
     echo "  3. Create tag:     git tag \"v${VERSION}\""
   fi
   echo "  4. Push to GitHub: git push origin master --tags"
-  echo "     (This triggers .github/workflows/release.yml to compile for macOS, Linux, and Windows)"
+  echo "     (This triggers .github/workflows/release.yml to build and publish the macOS release)"
 fi

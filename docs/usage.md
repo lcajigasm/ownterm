@@ -14,19 +14,19 @@ That downloads the archive for this machine from GitHub Releases, checks it agai
 
 Add `~/.local/bin` to `PATH` if it is not already there, then run `ownterm` or `ownterm-tui`.
 
-The archives are not code-signed. macOS may ask you to allow the app in Privacy & Security the first time you open it. Windows SmartScreen may show a warning. Check `SHA256SUMS` on the release before you bypass either prompt.
+The archives are not code-signed. macOS may ask you to allow the app in Privacy & Security the first time you open it. Check `SHA256SUMS` on the release before you bypass that prompt.
 
 To verify by hand:
 
 ```bash
 curl -fsSL -o SHA256SUMS https://github.com/lcajigasm/ownterm/releases/latest/download/SHA256SUMS
-curl -fsSL -o ownterm-linux-x86_64.tar.gz https://github.com/lcajigasm/ownterm/releases/latest/download/ownterm-linux-x86_64.tar.gz
-sha256sum -c SHA256SUMS --ignore-missing
+curl -fsSL -o ownterm-macos-arm64.tar.gz https://github.com/lcajigasm/ownterm/releases/latest/download/ownterm-macos-arm64.tar.gz
+shasum -a 256 -c SHA256SUMS --ignore-missing
 ```
 
-Use the asset name for your machine: `ownterm-macos-arm64`, `ownterm-macos-x86_64`, `ownterm-linux-x86_64`, or `ownterm-windows-x86_64`.
+Use the asset name for your Mac: `ownterm-macos-arm64` on Apple Silicon or `ownterm-macos-x86_64` on Intel. Releases are macOS only.
 
-On a Mac you can also open `ownterm-macos-universal.dmg` and drag `OwnTerm.app` to Applications. That app is the `ownterm` binary for both Apple Silicon and Intel. If the two builds cannot be combined, the release has `ownterm-macos-arm64.dmg` and `ownterm-macos-x86_64.dmg` instead. The `.tar.gz` archives stay on the release for this installer and for Homebrew. The disk image is not code-signed.
+You can also open `ownterm-macos-universal.dmg` and drag `OwnTerm.app` to Applications. That app is the `ownterm` binary for both Apple Silicon and Intel. If the two builds cannot be combined, the release has `ownterm-macos-arm64.dmg` and `ownterm-macos-x86_64.dmg` instead. The `.tar.gz` archives stay on the release for this installer and for Homebrew. The disk image is not code-signed.
 
 ## First launch
 

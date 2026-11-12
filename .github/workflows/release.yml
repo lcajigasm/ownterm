@@ -4,66 +4,61 @@ on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
-    # A cache saved by a tag run is invisible to the next tag. Only caches saved on the default
-    # branch are shared, so a dependency change on master rebuilds them ahead of the release.
-    branches:
-      - master
-    paths:
-      - Cargo.lock
-      - .github/workflows/release.yml
+  # A cache saved by a tag run is invisible to the next tag, and GitHub evicts a cache nobody
+  # read for seven days. Only runs on the default branch save caches every tag can restore, so
+  # this rebuilds them twice a week, away from the hours a release is usually tagged.
+  schedule:
+    - cron: "17 3 * * 1,4"
   pull_request:
     paths:
       - .github/workflows/release.yml
+      - script/ci/install-protoc.sh
+      - script/package-macos-dmg.sh
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to attach binaries to (vX.Y.Z)"
-        required: true
+        description: "Existing tag to publish (vX.Y.Z). Empty only rebuilds the caches."
+        required: false
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: release-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref_type != 'tag' && github.event_name != 'workflow_dispatch' }}
+  group: release-${{ github.event_name }}-${{ github.ref }}-${{ inputs.tag }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   # OwnTerm uploads no crash reports, so nothing symbolicates a release binary. Line tables only
-  # cost compile time, a dsymutil pass on macOS, and download size.
+  # cost compile time, a dsymutil pass, and download size.
   CARGO_PROFILE_RELEASE_DEBUG: "0"
+  HOMEBREW_NO_AUTO_UPDATE: "1"
+  HOMEBREW_NO_ANALYTICS: "1"
+  HOMEBREW_NO_INSTALL_CLEANUP: "1"
 
 jobs:
   build:
-    name: Build (${{ matrix.artifact_name }}, ${{ matrix.bin }})
-    runs-on: ${{ matrix.os }}
+    name: Build (${{ matrix.arch }}, ${{ matrix.bin }})
+    # The free standard macOS image. An account runs five macOS jobs at once, so this matrix has
+    # to stay at four or the fifth job waits for a slot.
+    runs-on: macos-15
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
-        target:
-          - aarch64-apple-darwin
-          - x86_64-apple-darwin
-          - x86_64-unknown-linux-gnu
-          - x86_64-pc-windows-msvc
+        arch:
+          - arm64
+          - x86_64
         # The TUI enables other features of the `warp` crate, so building it after the GUI in
         # one job recompiles that crate from scratch. Separate jobs do the two builds at once.
         bin:
           - ownterm
           - ownterm-tui
         include:
-          # macos-14 is in a retirement brownout through 2026-11-02 and rejects jobs.
-          - target: aarch64-apple-darwin
-            os: macos-15
-            artifact_name: ownterm-macos-arm64
-          - target: x86_64-apple-darwin
-            os: macos-15
-            artifact_name: ownterm-macos-x86_64
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-22.04
-            artifact_name: ownterm-linux-x86_64
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-            artifact_name: ownterm-windows-x86_64
+          - arch: arm64
+            target: aarch64-apple-darwin
+          - arch: x86_64
+            target: x86_64-apple-darwin
           - bin: ownterm
             build_args: -p warp --bin ownterm
           - bin: ownterm-tui
@@ -71,44 +66,29 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # A manual run builds the requested tag with this workflow file, so a
           # runner-image fix on master can still publish binaries for that tag.
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.sha }}
+          ref: ${{ inputs.tag || github.sha }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@1.92.0
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install Protoc
-        uses: arduino/setup-protoc@v3
+      # An older tag does not carry the CI scripts, so they come from this workflow's commit.
+      - name: Checkout CI scripts
+        uses: actions/checkout@v7
         with:
-          version: "25.x"
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ci-tools
+          sparse-checkout: script/ci
 
-      - name: Setup macOS
-        if: runner.os == 'macOS'
+      - name: Install Protoc
+        run: bash ci-tools/script/ci/install-protoc.sh
+
+      - name: Skip the Metal shader toolchain
         run: echo "WARP_LOCAL_SKIP_METAL=1" >> "$GITHUB_ENV"
-
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            pkg-config \
-            libasound2-dev \
-            libfontconfig1-dev \
-            libfreetype6-dev \
-            libxcb-xfixes0-dev \
-            libxkbcommon-dev \
-            libssl-dev \
-            libx11-dev \
-            libxcursor-dev \
-            libxi-dev \
-            libxrandr-dev \
-            libgl1-mesa-dev
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -117,227 +97,130 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/master' }}
 
       - name: Build ${{ matrix.bin }}
-        shell: bash
-        env:
-          # build.rs embeds this icon when the package script has no bin name.
-          OWNTERM_WINDOWS_ICON: channels/oss/icon/no-padding/icon.ico
         run: cargo build --release --locked --target ${{ matrix.target }} ${{ matrix.build_args }}
 
       - name: Upload binary
-        if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
+        id: upload
+        if: github.ref_type == 'tag' || inputs.tag != ''
+        # The artifact service has answered a finished build with an HTML error page. One more
+        # attempt below costs seconds; a failure here used to cost the whole build.
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
         with:
-          name: bin-${{ matrix.artifact_name }}-${{ matrix.bin }}
-          path: |
-            target/${{ matrix.target }}/release/${{ matrix.bin }}
-            target/${{ matrix.target }}/release/${{ matrix.bin }}.exe
+          name: bin-${{ matrix.arch }}-${{ matrix.bin }}
+          path: target/${{ matrix.target }}/release/${{ matrix.bin }}
           if-no-files-found: error
           retention-days: 1
 
-  package:
-    name: Package (${{ matrix.artifact_name }})
-    needs: build
-    if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        artifact_name:
-          - ownterm-macos-arm64
-          - ownterm-macos-x86_64
-          - ownterm-linux-x86_64
-          - ownterm-windows-x86_64
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Upload binary, second attempt
+        if: steps.upload.outcome == 'failure'
+        uses: actions/upload-artifact@v7
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.sha }}
-
-      - name: Download binaries
-        uses: actions/download-artifact@v4
-        with:
-          pattern: bin-${{ matrix.artifact_name }}-*
-          path: bins
-          merge-multiple: true
-
-      - name: Package archive
-        shell: bash
-        run: |
-          mkdir -p staging
-          cp bins/ownterm* staging/
-          test -s staging/ownterm || test -s staging/ownterm.exe
-          test -s staging/ownterm-tui || test -s staging/ownterm-tui.exe
-          # Artifacts do not keep the executable bit.
-          chmod 755 staging/ownterm*
-          cp README.md LICENSE-AGPL LICENSE-MIT staging/
-          tar -C staging -czf "${{ matrix.artifact_name }}.tar.gz" .
-          sha256sum "${{ matrix.artifact_name }}.tar.gz" > "${{ matrix.artifact_name }}.tar.gz.sha256"
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact_name }}
-          path: |
-            ${{ matrix.artifact_name }}.tar.gz
-            ${{ matrix.artifact_name }}.tar.gz.sha256
-
-  macos-dmg:
-    name: Package macOS DMG
-    needs: package
-    runs-on: macos-15
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.sha }}
-
-      - name: Download macOS archives
-        uses: actions/download-artifact@v4
-        with:
-          pattern: ownterm-macos-*
-          path: release-artifacts
-
-      - name: Resolve tag
-        id: tag
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG="${{ inputs.tag }}"
-          else
-            TAG="${GITHUB_REF_NAME}"
-          fi
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Refusing non-semver tag: $TAG" >&2
-            exit 1
-          fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-
-      - name: Build OwnTerm.app disk image
-        shell: bash
-        run: |
-          mkdir -p extract/arm64 extract/x86_64 dist
-          tar -xzf release-artifacts/ownterm-macos-arm64/ownterm-macos-arm64.tar.gz -C extract/arm64
-          tar -xzf release-artifacts/ownterm-macos-x86_64/ownterm-macos-x86_64.tar.gz -C extract/x86_64
-          test -s extract/arm64/ownterm
-          test -s extract/x86_64/ownterm
-          version="${{ steps.tag.outputs.tag }}"
-          version="${version#v}"
-          bash script/package-macos-dmg.sh \
-            --arm64 extract/arm64/ownterm \
-            --x86_64 extract/x86_64/ownterm \
-            --icon app/channels/oss/icon/no-padding/512x512.png \
-            --version "$version" \
-            --out-dir dist
-          shopt -s nullglob
-          dmgs=(dist/*.dmg)
-          if (( ${#dmgs[@]} == 0 )); then
-            echo "packaging produced no disk image" >&2
-            exit 1
-          fi
-
-      - name: Upload disk image
-        uses: actions/upload-artifact@v4
-        with:
-          name: ownterm-macos-dmg
-          path: |
-            dist/*.dmg
-            dist/*.dmg.sha256
-
-  screenshots:
-    name: Capture screenshots
-    needs: package
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.sha }}
-
-      - name: Download Linux archive
-        uses: actions/download-artifact@v4
-        with:
-          name: ownterm-linux-x86_64
-          path: release-artifacts
-
-      - name: Install capture tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb xterm xdotool imagemagick fonts-dejavu-core
-
-      - name: Capture ownterm-tui
-        run: |
-          tar -xzf release-artifacts/ownterm-linux-x86_64.tar.gz -C release-artifacts
-          bash script/capture-ownterm.sh \
-            --bin release-artifacts/ownterm-tui \
-            --out-dir dist/screenshots
-
-      - name: Upload screenshots
-        uses: actions/upload-artifact@v4
-        with:
-          name: ownterm-screenshots
-          path: |
-            dist/screenshots/ownterm-tui-models.png
-            dist/screenshots/ownterm-tui-help.png
+          name: bin-${{ matrix.arch }}-${{ matrix.bin }}
+          path: target/${{ matrix.target }}/release/${{ matrix.bin }}
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 1
 
   publish:
-    name: Publish GitHub Release
-    needs: [package, macos-dmg]
-    runs-on: ubuntu-latest
+    name: Package and publish
+    needs: build
+    if: github.ref_type == 'tag' || inputs.tag != ''
+    # hdiutil and lipo exist only on macOS.
+    runs-on: macos-15
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: ownterm-*
-          path: release-artifacts
-
-      - name: Resolve tag
-        id: tag
-        shell: bash
+      - name: Check the tag
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG="${{ inputs.tag }}"
-          else
-            TAG="${GITHUB_REF_NAME}"
-          fi
           if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Refusing non-semver tag: $TAG" >&2
             exit 1
           fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Collect archives
-        shell: bash
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.sha }}
+
+      - name: Download binaries
+        uses: actions/download-artifact@v8
+        with:
+          pattern: bin-*
+          path: bins
+
+      - name: Package archives
         run: |
           mkdir -p dist
-          find release-artifacts -type f \( -name "*.tar.gz" -o -name "*.dmg" \) -exec cp {} dist/ \;
-          find release-artifacts -type f -name "*.sha256" -print0 | sort -z | xargs -0 -r cat > dist/SHA256SUMS
-          cat dist/SHA256SUMS
-          test -f dist/ownterm-macos-arm64.tar.gz
-          test -f dist/ownterm-macos-x86_64.tar.gz
-          test -f dist/ownterm-linux-x86_64.tar.gz
-          test -f dist/ownterm-windows-x86_64.tar.gz
-          if ! grep -q 'ownterm-macos-universal.dmg' dist/SHA256SUMS \
-            && ! grep -q 'ownterm-macos-arm64.dmg' dist/SHA256SUMS; then
-            echo "SHA256SUMS has no macOS disk image" >&2
-            exit 1
+          for arch in arm64 x86_64; do
+            stage="staging/$arch"
+            mkdir -p "$stage"
+            cp "bins/bin-$arch-ownterm/ownterm" "bins/bin-$arch-ownterm-tui/ownterm-tui" "$stage/"
+            test -s "$stage/ownterm"
+            test -s "$stage/ownterm-tui"
+            # Artifacts do not keep the executable bit.
+            chmod 755 "$stage/ownterm" "$stage/ownterm-tui"
+            cp README.md LICENSE-AGPL LICENSE-MIT "$stage/"
+            tar -C "$stage" -czf "dist/ownterm-macos-$arch.tar.gz" .
+          done
+
+      - name: Build OwnTerm.app disk image
+        run: |
+          bash script/package-macos-dmg.sh \
+            --arm64 staging/arm64/ownterm \
+            --x86_64 staging/x86_64/ownterm \
+            --icon app/channels/oss/icon/no-padding/512x512.png \
+            --version "${TAG#v}" \
+            --out-dir dist
+          rm -f dist/*.sha256
+          if [[ ! -f dist/ownterm-macos-universal.dmg ]]; then
+            if [[ ! -f dist/ownterm-macos-arm64.dmg ]]; then
+              echo "packaging produced no disk image" >&2
+              exit 1
+            fi
+            echo "::warning::No universal disk image. The Homebrew cask only follows ownterm-macos-universal.dmg and will stay on the previous version."
           fi
 
+      - name: Write SHA256SUMS
+        working-directory: dist
+        run: |
+          shasum -a 256 -- *.tar.gz *.dmg > SHA256SUMS
+          cat SHA256SUMS
+
       - name: Publish release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.tag.outputs.tag }}
-          name: OwnTerm ${{ steps.tag.outputs.tag }}
-          draft: false
-          prerelease: false
-          files: dist/*
-          body: |
-            OwnTerm ${{ steps.tag.outputs.tag }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<EOF
+          OwnTerm $TAG
 
-            Open-source, local-first terminal. No Warp account, no telemetry upload.
+          Open-source, local-first terminal for macOS. No Warp account, no telemetry upload.
 
-            Archives include `ownterm` and `ownterm-tui` for macOS (arm64 and x86_64), Linux x86_64, and Windows x86_64.
-            macOS also has `ownterm-macos-universal.dmg` (`OwnTerm.app`, arm64 and x86_64) when the two builds combine, or one `.dmg` per architecture otherwise.
-            The `.tar.gz` archives stay on the release for the installer and Homebrew.
-            Verify downloads with `SHA256SUMS`.
+          \`ownterm-macos-universal.dmg\` holds \`OwnTerm.app\` for Apple Silicon and Intel. Homebrew installs the same image: \`brew install lcajigasm/tap/ownterm\`.
+          The \`.tar.gz\` archives hold \`ownterm\` and \`ownterm-tui\` for each architecture, for the installer script.
+          Verify downloads with \`SHA256SUMS\`.
+          EOF
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" dist/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --title "OwnTerm $TAG" \
+              --notes-file notes.md
+          fi
+
+      - name: Ask the Homebrew tap to update now
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "::notice::HOMEBREW_TAP_TOKEN is not set. lcajigasm/homebrew-tap finds the release on its own schedule, within 15 minutes."
+            exit 0
+          fi
+          if ! gh workflow run update.yml --repo lcajigasm/homebrew-tap --ref main; then
+            echo "::warning::Could not start the tap update. The tap's own schedule still picks the release up."
+          fi

@@ -2,7 +2,7 @@
 
 OwnTerm es un fork del cliente Warp (Warp Services, Inc.). El núcleo del terminal sigue bajo AGPL-3.0 y MIT. OwnTerm no está afiliado a Warp. Esta matriz compara bloques del cliente upstream con el binario `ownterm` (`Channel::Oss`) en este repositorio. Dónde vive cada mecanismo está en [ARCHITECTURE.md](ARCHITECTURE.md).
 
-El CI de pull request audita la privacidad, prueba el instalador sin red, cubre `ownterm_provider`, ejecuta `cargo check` de `ownterm` y `ownterm-tui` en Linux y corre los tests del agente local, de la política de flags y del arranque del TUI. El empaquetado de las cuatro plataformas es el workflow del tag.
+El CI de pull request audita la privacidad, prueba el instalador sin red, cubre `ownterm_provider`, ejecuta `cargo check` de `ownterm` y `ownterm-tui` en Linux y corre los tests del agente local, de la política de flags y del arranque del TUI. OwnTerm solo se publica para macOS (arm64 y x86_64); el empaquetado es el workflow del tag. El código de Linux y Windows heredado de Warp sigue en el árbol, pero no se compila, prueba ni publica.
 
 ## Matriz
 
@@ -16,9 +16,9 @@ El CI de pull request audita la privacidad, prueba el instalador sin red, cubre 
 | P1 | IA respaldada por servidor | Sugerencia de siguiente comando, sugerencias de prompt, búsqueda de comandos con IA, mensajes de commit, títulos de bloque y voz están apagados porque llamaban al servidor de Warp. Renombrar una conversación es local | Sus interruptores siguen visibles en Ajustes aunque no hacen nada. Ninguna de esas funciones se ha reimplementado sobre el modelo local |
 | P1 | Marca | Título de ventana, menús, Ajustes, textos del agente, TUI, primeros pasos y enlaces de ayuda dicen OwnTerm y apuntan a este repositorio | Quedan unos 300 enlaces «Learn more» a `docs.warp.dev`, el texto `--help` de `crates/warp_cli`, y los nombres `TERM_PROGRAM=WarpTerminal` y `WARP_*`, que se mantienen por compatibilidad |
 | P2 | Actualizaciones | `script/install-ownterm.sh` baja el archivo de GitHub Releases y comprueba `SHA256SUMS`. La app no descarga nada | No hay updater dentro de la app |
-| P2 | Empaquetado Linux | Archivo `.tar.gz` y AppImage | `.deb` y `.rpm` están bloqueados para OwnTerm: sus scripts registran el repositorio y la clave de Warp |
+| P3 | Linux y Windows | Aparcados. No hay binarios ni CI de release para ellos | Volver a publicar exige recuperar sus jobs de build. `.deb` y `.rpm` siguen bloqueados: sus scripts registran el repositorio y la clave de Warp |
 | P2 | Licencias de terceros | Los archivos incluyen `LICENSE-AGPL` y `LICENSE-MIT`. «Acerca de» enlaza el repositorio | Los archivos no incluyen `THIRD_PARTY_LICENSES` |
-| P3 | Firma y notarización | Aplazada. La guía de uso avisa de Gatekeeper y SmartScreen | Los artefactos no se firman |
+| P3 | Firma y notarización | Aplazada. La guía de uso avisa de Gatekeeper | Los artefactos no se firman |
 
 ## Siguientes tres huecos
 
